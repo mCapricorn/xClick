@@ -12,8 +12,8 @@ form { display: grid; gap: 1rem; }
 .credentials { grid-template-columns: repeat(auto-fit, minmax(min(13rem, 100%), 1fr)); gap: .8rem; }
 h2 { font-size: 1.125rem; margin: 0 0 .15rem; padding-bottom: .65rem; border-bottom: 1px solid var(--ui-line); }
 label, legend, summary { font-size: .94rem; font-weight: 600; }
-input, select, button { min-width: 0; font: inherit; color: inherit; border: 1px solid #cbd0df; background: white; border-radius: 8px; padding: .5rem .7rem; }
-input, select { width: 100%; font-weight: 400; }
+input, select, textarea, button { min-width: 0; font: inherit; color: inherit; border: 1px solid #cbd0df; background: white; border-radius: 8px; padding: .5rem .7rem; }
+input, select, textarea { width: 100%; font-weight: 400; }
 input:disabled, select:disabled { background: #f6f7fa; }
 .switch { display: flex; align-items: center; gap: .6rem; cursor: pointer; }
 .switch input { width: 1rem; height: 1rem; flex: none; margin: 0; accent-color: var(--ui-action); }
@@ -37,3 +37,14 @@ footer { grid-column: 1 / -1; }
 @media (min-width: 50rem) {
   form { grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); align-items: start; }
 }
+
+textarea { resize: vertical; }
+.studio, #customEditors, .custom-editor { display: grid; gap: .65rem; min-width: 0; }
+#customEditors:empty, #previewStatus:empty { display: none; }
+.studio { border-top: 1px solid var(--ui-line); padding-top: .85rem; }
+.studio h3 { font-size: 1rem; margin: 0; }
+.custom-editor, .preview-card { border-inline-start: 3px solid var(--ui-line); padding: .65rem .8rem; background: var(--ui-page); }
+#addStyle, .custom-editor button { justify-self: start; }
+.preview-card { margin-top: .4rem; white-space: pre-wrap; overflow-wrap: anywhere; }
+.preview-card p { margin: .25rem 0 0; }
+button:disabled { opacity: .55; cursor: default; }

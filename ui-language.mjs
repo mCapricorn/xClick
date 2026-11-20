@@ -2,6 +2,23 @@ import { styleLanguages as languages, styleLabels } from './ai/styles.mjs';
 const preferenceKey = 'xc_ui_language';
 const messages = {
   ...styleLabels,
+  addStyle: ["Add custom style", "添加自定义风格", "新增自訂風格", "Eigenen Stil hinzufügen", "Aggiungi stile", "カスタムスタイルを追加", "사용자 스타일 추가", "Ajouter un style"],
+  customStyle: ["Custom style", "自定义风格", "自訂風格", "Eigener Stil", "Stile personale", "カスタムスタイル", "사용자 스타일", "Style personnalisé"],
+  styleName: ["Style name", "风格名称", "風格名稱", "Stilname", "Nome dello stile", "スタイル名", "스타일 이름", "Nom du style"],
+  stylePrompt: ["Style instructions", "风格提示词", "風格提示詞", "Stilanweisung", "Istruzioni per lo stile", "スタイルの指示", "스타일 지침", "Consigne de style"],
+  removeStyle: ["Remove style", "删除风格", "刪除風格", "Stil entfernen", "Elimina stile", "スタイルを削除", "스타일 삭제", "Supprimer le style"],
+  stylePreview: ["Try reply styles", "试用回复风格", "試用回覆風格", "Antwortstile testen", "Prova gli stili", "返信スタイルを試す", "답글 스타일 테스트", "Essayer les styles de réponse"],
+  testPost: ["Default test post", "默认测试语句", "預設測試語句", "Standard-Testbeitrag", "Post di prova predefinito", "既定のテスト投稿", "기본 테스트 게시물", "Texte de test par défaut"],
+  sampleDefault: ["The basil on my windowsill finally has two new leaves.", "窗台上的罗勒终于长出了两片新叶。", "窗臺上的羅勒終於長出了兩片新葉。", "Mein Basilikum am Fenster hat endlich zwei neue Blätter.", "Il basilico sul davanzale ha finalmente due foglie nuove.", "窓辺のバジルにようやく新しい葉が二枚出た。", "창가의 바질에 드디어 새잎 두 장이 났다.", "Mon basilic sur le rebord de la fenêtre a enfin deux nouvelles feuilles."],
+  randomPost: ["Generate random test post", "生成随机测试语句", "產生隨機測試語句", "Zufälligen Testbeitrag erstellen", "Genera post casuale", "ランダムなテスト投稿を生成", "무작위 테스트 게시물 생성", "Générer un texte aléatoire"],
+  previewChoice: ["Style to test", "要试用的风格", "要試用的風格", "Zu testender Stil", "Stile da provare", "試すスタイル", "테스트할 스타일", "Style à essayer"],
+  testStyle: ["Test this style", "试写此风格", "試寫此風格", "Stil testen", "Prova questo stile", "このスタイルで試す", "이 스타일 테스트", "Tester ce style"],
+  previewCost: ["Each click uses the selected model and may incur charges. Save to keep your test post and styles.", "生成测试语句和试写都会调用当前模型，可能产生费用。点击保存可保留测试语句和风格。", "產生測試語句和試寫都會呼叫目前模型，可能產生費用。按儲存可保留測試語句和風格。", "Erstellen und Testen nutzen das gewählte Modell und können Kosten verursachen. Speichern übernimmt Testbeitrag und Stile.", "Generazione e prova usano il modello selezionato e possono avere un costo. Salva per conservare testo e stili.", "生成と試用には選択中のモデルを使用し、料金が発生する場合があります。投稿とスタイルは保存できます。", "생성과 테스트는 선택한 모델을 사용하며 비용이 발생할 수 있습니다. 저장을 누르면 테스트 게시물과 스타일이 유지됩니다.", "La génération et le test utilisent le modèle choisi et peuvent être facturés. Enregistrez pour conserver le texte et les styles."],
+  previewPending: ["Waiting for the model…", "正在等待模型回复…", "正在等待模型回覆…", "Warte auf das Modell…", "In attesa del modello…", "モデルの応答を待っています…", "모델 응답 대기 중…", "En attente du modèle…"],
+  previewFailed: ["Request failed. Check the provider, connection and quota.", "请求失败，请检查厂商配置、网络和额度。", "請求失敗，請檢查服務商設定、網路和額度。", "Anfrage fehlgeschlagen. Anbieter, Verbindung und Kontingent prüfen.", "Richiesta non riuscita. Verifica fornitore, connessione e quota.", "リクエストに失敗しました。接続、設定、利用枠を確認してください。", "요청 실패. 공급자 설정, 연결 및 한도를 확인하세요.", "Échec de la requête. Vérifiez le fournisseur, la connexion et le quota."],
+  previewFormat: ["The model returned an unusable response. Try again.", "模型返回的内容格式无效，请重试。", "模型回傳的內容格式無效，請重試。", "Ungültige Modellantwort. Erneut versuchen.", "Risposta del modello non valida. Riprova.", "応答形式が無効です。再試行してください。", "모델 응답 형식이 잘못되었습니다. 다시 시도하세요.", "Réponse du modèle inutilisable. Réessayez."],
+  needPost: ["Enter a test post.", "请填写测试语句。", "請填寫測試語句。", "Testbeitrag eingeben.", "Inserisci un post di prova.", "テスト投稿を入力してください。", "테스트 게시물을 입력하세요.", "Saisissez un texte de test."],
+  needStyle: ["Enter a style name and instructions.", "请填写风格名称和提示词。", "請填寫風格名稱和提示詞。", "Stilname und Anweisung eingeben.", "Inserisci nome e istruzioni.", "スタイル名と指示を入力してください。", "스타일 이름과 지침을 입력하세요.", "Saisissez un nom et une consigne."],
   modelConnection: ['Provider and models', '厂商与模型', '供應商與模型', 'Anbieter und Modelle', 'Fornitore e modelli', 'プロバイダーとモデル', '제공업체 및 모델', 'Fournisseur et modèles'],
   replyPreferences: ['Reply preferences', '回复偏好', '回覆偏好', 'Antworteinstellungen', 'Preferenze di risposta', '返信の設定', '답글 설정', 'Préférences de réponse'],
   solImageHint: ['Sol uses its image tool automatically. A custom API must support image_generation in Responses.', 'Sol 生图时会自动调用工具，无需另填模型。中转站须支持 Responses 的 image_generation 工具。', 'Sol 產圖時會自動呼叫工具，無需另填模型。中繼站須支援 Responses 的 image_generation 工具。', 'Sol verwendet das Bildwerkzeug automatisch. Eigene APIs müssen image_generation in Responses unterstützen.', 'Sol usa automaticamente lo strumento immagini. Le API personalizzate devono supportare image_generation in Responses.', 'Sol は画像生成ツールを使用します。追加のモデル設定は不要です。中継 API は Responses の image_generation に対応している必要があります。', 'Sol은 이미지 생성 도구를 사용합니다. 별도 모델 설정은 필요 없습니다. 중계 API는 Responses의 image_generation을 지원해야 합니다.', 'Sol utilise son outil de génération d’images. Une API personnalisée doit prendre en charge image_generation dans Responses.'],
@@ -117,10 +134,14 @@ function browserLanguage() {
 const selector = document.querySelector('#uiLanguage');
 let language;
 
+export function translated(key) {
+  return key ? messages[key][languages.indexOf(language)] : '';
+}
+
 export function setLabel(element, key, attribute = 'textContent') {
   const binding = { textContent: 'i18n', placeholder: 'i18nPlaceholder', 'aria-label': 'i18nAria' }[attribute];
   element.dataset[binding] = key;
-  const value = key ? messages[key][languages.indexOf(language)] : '';
+  const value = translated(key);
   if (attribute === 'textContent') element.textContent = value;
   else element.setAttribute(attribute, value);
 }

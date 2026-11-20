@@ -1,6 +1,6 @@
 import { mediaKinds, videoOrigins } from './media.mjs';
 import { nativeLanguages } from './drafts.mjs';
-import { selectedStyles, styleIds } from './styles.mjs';
+import { replyStudio } from './reply-studio.mjs';
 import { setLabel } from '../ui-language.mjs';
 import { applyPalette, themeKeys } from '../ui-theme.mjs';
 import { configuration } from './config.mjs';
@@ -29,22 +29,14 @@ let saved; // Profile selected in the form.
 const { bilingual, nativeLanguage, includePhotos } = form.elements;
 for (const [id, label] of Object.entries(nativeLanguages)) nativeLanguage.add(new Option(label, id));
 bilingual.onchange = () => { nativeLanguage.disabled = !bilingual.checked; };
-const styleChoices = document.querySelector('#styleChoices');
-const styleInputs = styleIds.map(id => {
-  const input = document.createElement('input');
-  input.type = 'checkbox';
-  input.value = id;
-  const name = document.createElement('span');
-  setLabel(name, id);
-  const label = document.createElement('label');
-  label.className = 'switch';
-  label.append(input, name);
-  styleChoices.append(label);
-  return input;
-});
+function modelConfig() {
+  return { provider: provider.value, model: model.value || manual.value.trim(), key: effectiveKey(),
+    base_url: base_url.value.trim(), workspace: workspace.value.trim(),
+    bilingual: bilingual.checked, nativeLanguage: nativeLanguage.value };
+}
+const studio = replyStudio(form, modelConfig);
 function restoreReplyOptions(active) {
-  const enabled = selectedStyles(active?.styles);
-  for (const input of styleInputs) input.checked = enabled.includes(input.value);
+  studio.restore(active);
   includePhotos.checked = active?.includePhotos !== false;
   bilingual.checked = active?.bilingual === true;
   nativeLanguage.value = active?.nativeLanguage || document.documentElement.lang;
@@ -177,14 +169,9 @@ provider.onchange = () => { setLabel(status, ''); showProvider(); };
 form.onsubmit = async event => {
   event.preventDefault();
   const id = provider.value;
-  const styles = styleInputs.filter(input => input.checked).map(input => input.value);
-  if (!styles.length) {
-    setLabel(status, 'chooseStyles');
-    styleInputs[0].focus();
-    return;
-  }
-  const next = { styles, provider: id, model: model.value || manual.value.trim(), key: effectiveKey(),
-    includePhotos: includePhotos.checked, bilingual: bilingual.checked, nativeLanguage: nativeLanguage.value };
+  const preferences = studio.preferences();
+  if (!preferences) return;
+  const next = { ...preferences, ...modelConfig(), includePhotos: includePhotos.checked };
   if (id === 'doubao') {
     for (const field of ['imageModel', 'gifModel']) {
       const value = form.elements[field].value.trim();
@@ -192,11 +179,12 @@ form.onsubmit = async event => {
     }
   }
   if (photoModel.value) next.photoModel = photoModel.value;
-  if (id === 'anthropic' && workspace.value.trim()) next.workspace = workspace.value.trim();
+  if (id !== 'anthropic' || !next.workspace) delete next.workspace;
   let base;
   try { base = apiBase(id, base_url.value); }
   catch { setLabel(status, 'invalidBase'); base_url.focus(); return; }
-  if (base_url.value.trim()) next.base_url = base;
+  if (next.base_url) next.base_url = base;
+  else delete next.base_url;
   if (!next.model || !next.key) {
     setLabel(status, 'missing');
     return;

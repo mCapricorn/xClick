@@ -37,11 +37,15 @@ export function authHeaders({ provider, key, workspace }) {
 }
 
 export function makeRequest(config, post, comments = [], photos = [], postLanguage) {
+  const system = replyInstructions(referenceLanguage(config), config.styles, postLanguage, config.customStyles);
+  const user = JSON.stringify(comments.length ? { post, comments } : { post });
+  return jsonRequest(config, system, user, photos);
+}
+
+export function jsonRequest(config, system, user, photos = []) {
   const { provider, model } = config;
   const { path } = providers[provider];
   const base = apiBase(provider, config.base_url);
-  const system = replyInstructions(referenceLanguage(config), config.styles, postLanguage);
-  const user = JSON.stringify(comments.length ? { post, comments } : { post });
   const headers = { ...authHeaders(config), 'Content-Type': 'application/json' };
   if (provider === 'google') {
     const modelId = model.replace(/^models\//, '');
@@ -100,7 +104,7 @@ export async function readProviderError(provider, response, sentPhotos = false) 
   return { error: 'provider', status };
 }
 
-export function readReplies(provider, data, native = null, styles) {
+export function readProviderJSON(provider, data) {
   let text;
   if (provider === 'anthropic') text = data.content?.filter(p => p.type === 'text').map(p => p.text).join('');
   else if (provider === 'google') text = data.candidates?.[0]?.content?.parts?.filter(p => !p.thought).map(p => p.text).join('');
@@ -109,6 +113,9 @@ export function readReplies(provider, data, native = null, styles) {
       .flatMap(item => item.content).filter(part => part.type === 'output_text').map(part => part.text).join('');
   }
   else text = data.choices?.[0]?.message?.content;
-  const values = JSON.parse(String(text ?? '').trim().replace(/^```(?:json)?\s*|\s*```$/gi, ''));
-  return parseDrafts(values, native, styles);
+  return JSON.parse(String(text ?? '').trim().replace(/^```(?:json)?\s*|\s*```$/gi, ''));
+}
+
+export function readReplies(provider, data, native = null, styles, custom) {
+  return parseDrafts(readProviderJSON(provider, data), native, styles, custom);
 }

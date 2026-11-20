@@ -14,12 +14,30 @@ export const styleLabels = {
 export const defaultStyles = ['minimal', 'concise', 'conversational', 'vivid', 'enthusiastic'];
 export const styleIds = Object.keys(styleLabels);
 
-export function selectedStyles(value) {
-  const valid = Array.isArray(value) ? styleIds.filter(id => value.includes(id)) : [];
+export const styleLimits = { count: 16, name: 48, prompt: 800, sample: 1200 };
+
+export function customDefinitions(value) {
+  if (!Array.isArray(value)) return [];
+  const definitions = new Map();
+  for (const entry of value) {
+    if (!entry || typeof entry.id !== 'string' || !/^custom-[a-z0-9-]{1,48}$/.test(entry.id) || definitions.has(entry.id)) continue;
+    const name = typeof entry.name === 'string' && entry.name.trim();
+    const prompt = typeof entry.prompt === 'string' && entry.prompt.trim();
+    if (name && name.length <= styleLimits.name && prompt && prompt.length <= styleLimits.prompt) {
+      definitions.set(entry.id, { id: entry.id, name, prompt });
+      if (definitions.size === styleLimits.count) break;
+    }
+  }
+  return [...definitions.values()];
+}
+
+export function selectedStyles(value, custom) {
+  const valid = Array.isArray(value) ? [...styleIds, ...customDefinitions(custom).map(style => style.id)].filter(id => value.includes(id)) : [];
   return valid.length ? valid : [...defaultStyles];
 }
 
-export function composerLabels(language) {
+export function composerLabels(language, custom) {
   const index = Math.max(0, styleLanguages.indexOf(language));
-  return Object.fromEntries(styleIds.map(id => [id, styleLabels[id][index]]));
+  return Object.fromEntries([...styleIds.map(id => [id, styleLabels[id][index]]),
+    ...customDefinitions(custom).map(({ id, name }) => [id, name])]);
 }
