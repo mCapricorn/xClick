@@ -1,0 +1,61 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { mediaKinds, requestMedia, videoOrigins } from '../ai/media.mjs';
+
+test('Ark media generation is opt-in and polls without re-submitting a paid task', async t => {
+  const cfg = { provider:'doubao', key:'fixture', imageModel:'fixture-image', gifModel:'fixture-video' };
+  const args = { post:'A dance', text:'One more spin', images:['https://pbs.twimg.com/media/fixture.png'] };
+  globalThis.chrome = { permissions:{contains:async()=>true} };
+  t.after(()=>{ delete globalThis.chrome; });
+  const requests = [];
+  let reply;
+  t.mock.method(globalThis,'fetch',async(url,opts)=>{
+    requests.push({url:String(url), ...opts});
+    return reply();
+  });
+  assert.deepEqual(mediaKinds({...cfg,provider:'other'}),[]);
+  assert.deepEqual(await requestMedia({...cfg,gifModel:''},{...args,kind:'gif'}),{error:'mediaSetup'});
+  assert.equal(requests.length,0);
+  reply=()=>Response.json({data:[{b64_json:'fixture'}]});
+  assert.deepEqual(await requestMedia(cfg,{...args,kind:'image'}),{image:'fixture'});
+  assert.match(JSON.parse(requests[0].body).image,/pbs\.twimg\.com/);
+  reply=()=>Response.json({id:'cgt-test'});
+  assert.deepEqual(await requestMedia({...cfg,includePhotos:false},{...args,kind:'gif'}),{task:'cgt-test'});
+  assert.equal(JSON.parse(requests[1].body).content.length,1);
+  const poll={kind:'gif',task:'cgt-test'};
+  reply=()=>Response.json({status:'running'});
+  assert.deepEqual(await requestMedia(cfg,poll),{pending:true});
+  reply=()=>Response.json({status:'succeeded',content:{video_url:'https://example.org/video'}});
+  await assert.rejects(requestMedia(cfg,poll));
+  reply=()=>{reply=()=>new Response(new Uint8Array([1,2,3]));return Response.json({status:'succeeded',content:{video_url:videoOrigins[0]+'/clip'}});};
+  assert.deepEqual(await requestMedia(cfg,poll),{video:'AQID'});
+  assert.equal(requests.at(-1).headers,undefined);
+  assert.equal(requests.at(-1).credentials,'omit');
+  assert.equal(requests.filter(x=>x.method==='POST').length,2);
+});
+
+test('Sol requests image generation through the configured Responses endpoint only on an image action', async t => {
+  const cfg = { provider: 'openai', model: 'gpt-6.2-sol', key: 'fixture', base_url: 'https://relay.invalid/v1' };
+  const args = { kind: 'image', post: 'A dance', text: 'One more spin', images: ['https://pbs.twimg.com/media/fixture.png'] };
+  globalThis.chrome = { permissions: { contains: async () => true } };
+  t.after(() => { delete globalThis.chrome; });
+  let response = Response.json({ output: [{ type: 'message' }, { type: 'image_generation_call', result: 'fixture' }] });
+  const fetch = t.mock.method(globalThis, 'fetch', async () => response);
+  assert.deepEqual(mediaKinds(cfg), ['image']);
+  assert.deepEqual(await requestMedia(cfg, { ...args, kind: 'gif' }), { error: 'mediaSetup' });
+  assert.equal(fetch.mock.callCount(), 0);
+  assert.deepEqual(await requestMedia(cfg, args), { image: 'fixture' });
+  const [url, options] = fetch.mock.calls[0].arguments;
+  assert.equal(url, 'https://relay.invalid/v1/responses');
+  const body = JSON.parse(options.body);
+  assert.equal(body.model, cfg.model);
+  assert.equal(body.tool_choice.type, 'image_generation');
+  assert.equal(body.tools[0].type, 'image_generation');
+  assert.equal(body.input[0].content[1].type, 'input_image');
+  response = Response.json({ output: [{ type: 'message' }] });
+  assert.deepEqual(await requestMedia({ ...cfg, includePhotos: false }, args), { error: 'noImage' });
+  assert.equal(JSON.parse(fetch.mock.calls[1].arguments[1].body).input[0].content.length, 1);
+  response = new Response(null, { status: 404 });
+  assert.deepEqual(await requestMedia(cfg, args), { error: 'imageEndpoint', status: 404 });
+  assert.equal(fetch.mock.callCount(), 3);
+});

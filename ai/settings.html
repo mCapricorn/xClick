@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title data-i18n="aiTitle">xClick · AI replies</title>
+<link rel="stylesheet" href="../ui-theme.css">
+<link rel="stylesheet" href="settings.css"></head><body><main>
+<header><img src="../assets/icons/icon-48.png" width="32" height="32" alt=""><span>xClick</span>
+<h1 data-i18n="aiReplies">AI replies</h1></header>
+<p data-i18n="aiNotice">Generating sends the original post and up to five comments from the open thread to your provider using your API key. Provider charges may apply. Settings are saved in this browser.</p>
+<form id="settings">
+<section class="card" aria-labelledby="connectionTitle">
+<h2 id="connectionTitle" data-i18n="modelConnection">Provider and models</h2>
+<div class="credentials">
+<label><span data-i18n="provider">Provider</span><select id="provider" required></select></label>
+<label><span data-i18n="key">API key</span><input id="key" type="password" required autocomplete="off" spellcheck="false"></label>
+</div>
+<label><span data-i18n="baseURL">API base URL (optional)</span><input id="base_url" type="url" aria-describedby="baseHelp" autocomplete="off" spellcheck="false"></label>
+<p id="baseHelp" class="help" data-i18n="baseHelp"></p>
+
+<label id="workspaceField" hidden><span data-i18n="claudeWorkspace">Workspace ID for all-workspaces keys</span><input id="workspace" placeholder="wrkspc_…" autocomplete="off" spellcheck="false"></label>
+<p id="arkHelp" class="help" data-i18n="arkHelp" hidden></p>
+<label><span data-i18n="defaultReplyModel">Default reply model</span><select id="model"></select></label>
+<label id="manualField" hidden><span data-i18n="modelOrEndpoint">Model or endpoint ID</span><input id="manualModel" maxlength="150" spellcheck="false"></label>
+<div class="catalogue"><button id="refreshModels" type="button" data-i18n="refreshModels">Load provider models</button>
+<small class="help" id="catalogueStatus" aria-live="polite"></small></div>
+<p id="imageHint" class="help image-hint" hidden></p>
+<label class="switch"><input id="includePhotos" type="checkbox" checked><span data-i18n="includePhotos">Send post photos to the model (up to four, including quoted photos)</span></label>
+<details><summary data-i18n="advancedModels">Advanced model settings</summary>
+<label><span data-i18n="photoModel">Model for posts with photos</span><select id="photoModel"></select></label>
+<div id="arkMedia" hidden>
+<label><span data-i18n="imageGenModel">Image generation model</span><input id="imageModel" maxlength="150" spellcheck="false" placeholder="doubao-seedream-5-0-lite-260128"></label>
+<label><span data-i18n="gifGenModel">GIF generation model (Seedance)</span><input id="gifModel" maxlength="150" spellcheck="false" placeholder="doubao-seedance-2-0-fast-260128"></label>
+<p class="help" data-i18n="mediaHelp">Enter an activated model ID to enable its button. Generating media incurs provider charges.</p>
+</div></details>
+</section>
+<section class="card" aria-labelledby="preferencesTitle">
+<h2 id="preferencesTitle" data-i18n="replyPreferences">Reply preferences</h2>
+<label class="switch"><input id="bilingual" type="checkbox"><span data-i18n="bilingual">Show native-language references</span></label>
+<label><span data-i18n="nativeLanguage">Native language</span><select id="nativeLanguage" disabled></select></label>
+<fieldset id="styles" aria-describedby="styleHelp"><legend data-i18n="replyStyles">Reply styles</legend>
+<p class="help" id="styleHelp" data-i18n="chooseStyles">Select at least one style. Each gets one draft.</p>
+<div id="styleChoices"></div></fieldset>
+<details name="styleTools" id="styleManager"><summary data-i18n="manageStyles">Manage custom styles</summary>
+<div class="tool-panel">
+<div class="tool-row"><label id="editChoice" hidden><span data-i18n="styleToEdit">Style to edit</span><select id="editStyle"></select></label>
+<button type="button" id="addStyle" data-i18n="addStyle">Add custom style</button></div>
+<div id="customEditors"></div>
+</div></details>
+<details name="styleTools" id="styleStudio"><summary data-i18n="stylePreview">Try reply styles</summary>
+<div class="tool-panel">
+<div class="tool-row"><label><span data-i18n="testPost">Default test post</span><textarea id="samplePost" rows="2"></textarea></label>
+<button type="button" id="randomPost" data-i18n="randomPost">Generate random post</button></div>
+<div class="tool-row"><label><span data-i18n="previewChoice">Style to test</span><select id="previewStyle"></select></label>
+<button type="button" id="testStyle" data-i18n="testStyle">Test this style</button></div>
+<p class="help" data-i18n="previewCost"></p>
+<p id="previewStatus" class="help" role="status"></p>
+<div id="previewResults" aria-live="polite"></div>
+</div></details>
+</section>
+<footer><button type="submit" data-i18n="save">Save</button> <button type="button" id="clear" data-i18n="clear">Clear all provider settings</button><p role="status" id="status"></p></footer>
+</form>
+</main><script type="module" src="settings.mjs"></script></body></html>
