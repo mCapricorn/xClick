@@ -1,5 +1,7 @@
 # xClick
 
+**English** · [简体中文](README.zh-CN.md)
+
 xClick is a Chrome / Edge Manifest V3 extension that adds lightweight interaction effects to X:
 - Like: neon heart bursts, rotating visual variants, and synthesized click feedback.
 - Follow: expanding rings, profile-follow cues, and alternate sound palettes.
