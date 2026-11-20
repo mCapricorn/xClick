@@ -1,0 +1,17 @@
+:root {
+  --ui-font: "Noto Sans", Arial, var(--ui-script-font, system-ui), sans-serif;
+  --xp-primary: #00f6ff;
+  --xp-accent: #ff2bd6;
+  --ui-action: color-mix(in srgb, var(--xp-primary) 40%, #152238);
+  --ui-line: color-mix(in srgb, var(--xp-primary) 16%, #d3d8de);
+  --ui-tint: color-mix(in srgb, var(--xp-primary) 19%, white);
+  --ui-page: color-mix(in srgb, var(--xp-primary) 4%, #fafbfc);
+}
+
+:root:lang(zh-Hans) { --ui-script-font: "Noto Sans SC", "PingFang SC", "Microsoft YaHei UI"; }
+:root:lang(zh-Hant) { --ui-script-font: "Noto Sans TC", "PingFang TC", "Microsoft JhengHei UI"; }
+:root:lang(ja) { --ui-script-font: "Noto Sans JP", "Hiragino Sans", "Yu Gothic UI"; }
+:root:lang(ko) { --ui-script-font: "Noto Sans KR", "Apple SD Gothic Neo", "Malgun Gothic"; }
+
+/* Chrome extension pages have a browser-supplied body font. */
+body { font: inherit; }

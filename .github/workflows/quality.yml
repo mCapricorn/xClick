@@ -1,0 +1,26 @@
+name: Repository checks
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  repository:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Check tracked files
+        run: python3 tooling/check_repo.py
+      - name: Check extension source
+        run: |
+          python3 -m json.tool manifest.json > /dev/null
+          node --check content.js
+          node --check popup.js
+          node --check ui-language.mjs
+          node --check ai/composer.js
+          for file in ai/*.mjs; do node --check "$file"; done
+          node --test tooling/*.test.mjs

@@ -1,0 +1,29 @@
+name: 开发任务
+description: 定义任务范围与验收条件
+body:
+  - type: textarea
+    id: goal
+    attributes:
+      label: 目标与背景
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: 实施范围、排除项及依赖
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: 验收条件和验证环境
+      description: 单项任务写一句可观察的结果即可。多项任务请按 A01、A02 编号，注明条件、预期结果及所需环境，供 PR 逐项引用。
+      placeholder: |
+        A01 在指定环境中执行某个操作后，应观察到……
+        A02 在另一种条件下，应观察到……
+    validations:
+      required: true
+  - type: textarea
+    id: coordination
+    attributes:
+      label: 负责人、审核安排和交接信息
