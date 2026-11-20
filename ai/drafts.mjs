@@ -10,6 +10,7 @@ const guidance = {
   conversational: 'Say something you might say back to the author in conversation.',
   vivid: 'Pick one memorable detail or playful turn when it fits.',
   enthusiastic: 'Sound like a warm, talkative friend. Spend two or three short sentences on one detail that caught your attention and what makes it interesting. Match the mood of the post, without piling on praise or exclamation marks.',
+  sincereFriendly: 'Respond to one specific thing the author shared with genuine interest. Use a warm, plainspoken sentence or two, as you would with someone you just met.',
   curious: 'Ask one genuine follow-up about a specific detail the post leaves open.',
   dryHumor: 'Use an understated, deadpan observation when appropriate. Keep it kind.',
   askGrok: 'Address @grok directly. Ask one short, natural question about a specific detail in the post that Grok could explain, check or play along with. Write only the commenter’s question.',
