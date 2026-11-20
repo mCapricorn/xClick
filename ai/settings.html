@@ -39,18 +39,22 @@
 <fieldset id="styles" aria-describedby="styleHelp"><legend data-i18n="replyStyles">Reply styles</legend>
 <p class="help" id="styleHelp" data-i18n="chooseStyles">Select at least one style. Each gets one draft.</p>
 <div id="styleChoices"></div></fieldset>
+<details name="styleTools" id="styleManager"><summary data-i18n="manageStyles">Manage custom styles</summary>
+<div class="tool-panel">
+<div class="tool-row"><label id="editChoice" hidden><span data-i18n="styleToEdit">Style to edit</span><select id="editStyle"></select></label>
+<button type="button" id="addStyle" data-i18n="addStyle">Add custom style</button></div>
 <div id="customEditors"></div>
-<button type="button" id="addStyle" data-i18n="addStyle">Add custom style</button>
-<section class="studio" aria-labelledby="studioTitle">
-<h3 id="studioTitle" data-i18n="stylePreview">Try reply styles</h3>
-<label><span data-i18n="testPost">Default test post</span><textarea id="samplePost" rows="3" required></textarea></label>
-<div><button type="button" id="randomPost" data-i18n="randomPost">Generate random post</button></div>
-<label><span data-i18n="previewChoice">Style to test</span><select id="previewStyle"></select></label>
-<div><button type="button" id="testStyle" data-i18n="testStyle">Test this style</button></div>
+</div></details>
+<details name="styleTools" id="styleStudio"><summary data-i18n="stylePreview">Try reply styles</summary>
+<div class="tool-panel">
+<div class="tool-row"><label><span data-i18n="testPost">Default test post</span><textarea id="samplePost" rows="2"></textarea></label>
+<button type="button" id="randomPost" data-i18n="randomPost">Generate random post</button></div>
+<div class="tool-row"><label><span data-i18n="previewChoice">Style to test</span><select id="previewStyle"></select></label>
+<button type="button" id="testStyle" data-i18n="testStyle">Test this style</button></div>
 <p class="help" data-i18n="previewCost"></p>
 <p id="previewStatus" class="help" role="status"></p>
 <div id="previewResults" aria-live="polite"></div>
-</section>
+</div></details>
 </section>
 <footer><button type="submit" data-i18n="save">Save</button> <button type="button" id="clear" data-i18n="clear">Clear all provider settings</button><p role="status" id="status"></p></footer>
 </form>

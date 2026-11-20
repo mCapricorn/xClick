@@ -2,6 +2,8 @@ import { styleLanguages as languages, styleLabels } from './ai/styles.mjs';
 const preferenceKey = 'xc_ui_language';
 const messages = {
   ...styleLabels,
+  manageStyles: ['Manage custom styles', '管理自定义风格', '管理自訂風格', 'Eigene Stile verwalten', 'Gestisci stili personali', 'カスタムスタイルの管理', '사용자 스타일 관리', 'Gérer les styles personnalisés'],
+  styleToEdit: ['Style to edit', '要编辑的风格', '要編輯的風格', 'Zu bearbeitender Stil', 'Stile da modificare', '編集するスタイル', '편집할 스타일', 'Style à modifier'],
   addStyle: ["Add custom style", "添加自定义风格", "新增自訂風格", "Eigenen Stil hinzufügen", "Aggiungi stile", "カスタムスタイルを追加", "사용자 스타일 추가", "Ajouter un style"],
   customStyle: ["Custom style", "自定义风格", "自訂風格", "Eigener Stil", "Stile personale", "カスタムスタイル", "사용자 스타일", "Style personnalisé"],
   styleName: ["Style name", "风格名称", "風格名稱", "Stilname", "Nome dello stile", "スタイル名", "스타일 이름", "Nom du style"],

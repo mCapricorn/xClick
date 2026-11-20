@@ -4,7 +4,7 @@ import { apiBase, apiPermission } from './providers.mjs';
 import { setLabel, translated } from '../ui-language.mjs';
 
 export function replyStudio(form, modelConfig) {
-  const { samplePost, previewStyle } = form.elements;
+  const { samplePost, previewStyle, editStyle } = form.elements;
   const byId = id => document.getElementById(id);
   const choices = byId('styleChoices');
   const editors = byId('customEditors');
@@ -25,7 +25,7 @@ export function replyStudio(form, modelConfig) {
     setLabel(status, '');
   }
   form.addEventListener('input', event => {
-    if (event.target !== previewStyle && !choices.contains(event.target)) invalidate();
+    if (event.target !== editStyle && event.target !== previewStyle && !choices.contains(event.target)) invalidate();
   });
 
   function addChoice(id, name) {
@@ -48,6 +48,13 @@ export function replyStudio(form, modelConfig) {
   }
   for (const id of styleIds) addChoice(id);
 
+  function showEditor(id) {
+    editStyle.value = id;
+    byId('editChoice').hidden = !rows.size;
+    for (const [style, row] of rows) row.editor.hidden = style !== id;
+  }
+  editStyle.onchange = () => showEditor(editStyle.value);
+
   function field(tag, key, value, max) {
     const label = document.createElement('label');
     const caption = document.createElement('span');
@@ -55,12 +62,13 @@ export function replyStudio(form, modelConfig) {
     const input = document.createElement(tag);
     input.value = value;
     input.maxLength = max;
-    input.required = true;
     label.append(caption, input);
     return { label, input };
   }
   function addCustom({ id, name, prompt }) {
     const choice = addChoice(id, name);
+    const entry = new Option(choice.option.textContent, id);
+    editStyle.add(entry);
     const editor = document.createElement('div');
     editor.className = 'custom-editor';
     const title = field('input', 'styleName', name, styleLimits.name);
@@ -69,7 +77,7 @@ export function replyStudio(form, modelConfig) {
     remove.type = 'button';
     setLabel(remove, 'removeStyle');
     title.input.oninput = () => {
-      choice.caption.textContent = choice.option.textContent = title.input.value.trim() || translated('customStyle');
+      entry.textContent = choice.caption.textContent = choice.option.textContent = title.input.value.trim() || translated('customStyle');
     };
     remove.onclick = () => {
       choice.label.remove();
@@ -77,19 +85,22 @@ export function replyStudio(form, modelConfig) {
       editor.remove();
       checks.delete(id);
       rows.delete(id);
+      entry.remove();
+      showEditor(editStyle.value);
       add.disabled = false;
       invalidate();
       add.focus();
     };
     editor.append(title.label, instruction.label, remove);
     editors.append(editor);
-    rows.set(id, { name: title.input, prompt: instruction.input });
+    rows.set(id, { editor, name: title.input, prompt: instruction.input });
     add.disabled = rows.size >= styleLimits.count;
     return title.input;
   }
   add.onclick = () => {
     const id = `custom-${crypto.randomUUID()}`;
     const title = addCustom({ id, name: '', prompt: '' });
+    showEditor(id);
     checks.get(id).checked = true;
     previewStyle.value = id;
     title.focus();
@@ -102,10 +113,13 @@ export function replyStudio(form, modelConfig) {
     }
     rows.clear();
     editors.replaceChildren();
+    editStyle.replaceChildren();
+    byId('styleManager').open = byId('styleStudio').open = false;
     while (previewStyle.length > styleIds.length) previewStyle.remove(styleIds.length);
     add.disabled = false;
     const custom = customDefinitions(config?.customStyles);
     for (const style of custom) addCustom(style);
+    showEditor(editStyle.value);
     const enabled = selectedStyles(config?.styles, custom);
     for (const [id, input] of checks) input.checked = enabled.includes(id);
     previewStyle.value = enabled[0];
@@ -118,8 +132,9 @@ export function replyStudio(form, modelConfig) {
       const { name, prompt } = rows.get(id);
       for (const input of [name, prompt]) {
         if (!input.value.trim()) {
-          input.focus();
-          setLabel(status, 'needStyle');
+          byId('styleManager').open = true;
+          showEditor(id);
+          reportMissing(input, 'needStyle');
           return null;
         }
       }
@@ -127,10 +142,16 @@ export function replyStudio(form, modelConfig) {
     }
     return custom;
   }
+  function reportMissing(input, key) {
+    input.focus();
+    input.setCustomValidity(translated(key));
+    input.reportValidity();
+    input.setCustomValidity('');
+  }
   function hasPost() {
     if (samplePost.value.trim()) return true;
-    setLabel(status, 'needPost');
-    samplePost.focus();
+    byId('styleStudio').open = true;
+    reportMissing(samplePost, 'needPost');
     return false;
   }
   function preferences() {
