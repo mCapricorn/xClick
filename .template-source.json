@@ -1,0 +1,19 @@
+{
+  "schema": 1,
+  "source_repository": "mCapricorn/dev-collaboration-template",
+  "source_branch": "main",
+  "policy_revision": 2,
+  "rule_paths": [
+    "AGENTS.md",
+    "CONTRIBUTING.md",
+    "SECURITY.md",
+    "docs/DEVELOPMENT.md",
+    "docs/HANDOFF.md",
+    "docs/adr/TEMPLATE.md",
+    ".github/ISSUE_TEMPLATE/task.yml",
+    ".github/pull_request_template.md",
+    ".gitmessage",
+    "tooling/check_repo.py"
+  ],
+  "check_command": "python tooling/check_template_updates.py"
+}
