@@ -210,10 +210,44 @@ test('keeps translation separate, strips unrequested references and preserves to
   assert.deepEqual(parse({ language: 'zh-Hans', ...translated }, 'zh-Hans'), drafts);
   assert.deepEqual(parse(translated), drafts);
   assert.deepEqual(parse({ ...translated, language: 'zh-Hans' }, 'en'), drafts.map(draft => ({ ...draft, reference: 'Reference ' + draft.tone })));
-  assert.throws(() => parse({ ...entries, language: 'zh-Hans' }, 'en'));
+  assert.deepEqual(parse({ ...entries, language: 'zh-Hans' }, 'en'), drafts);
   assert.throws(() => parse({}), /format/);
   assert.deepEqual(parse({ ...entries, minimal: null }), drafts.slice(1));
   assert.deepEqual(parse({ ...entries, vivid: entries.minimal }), drafts.filter(draft => draft.tone !== 'vivid'));
+});
+test('reads fenced JSON, content-part arrays and valid partial replies', () => {
+  const value = { minimal: 'A short reply.', concise: { text: 'One clear detail.' }, vivid: { text: '' } };
+  const content = [{ type: 'text', text: 'Here is the result:\n```json\n' }, { type: 'text', text: JSON.stringify(value) }, { type: 'text', text: '\n```' }];
+  assert.deepEqual(readReplies('openai', { choices: [{ message: { content } }] }), [
+    { tone: 'minimal', text: 'A short reply.' }, { tone: 'concise', text: 'One clear detail.' }
+  ]);
+});
+test('accepts structured message content and Responses API output text', () => {
+  const value = { minimal: { text: 'Direct object.' } };
+  assert.deepEqual(readReplies('openai', { choices: [{ message: { content: value } }] }), [
+    { tone: 'minimal', text: 'Direct object.' }
+  ]);
+  assert.deepEqual(readReplies('grok', { output_text: JSON.stringify(value) }), [
+    { tone: 'minimal', text: 'Direct object.' }
+  ]);
+});
+test('accepts omitted language and common language tags when references are enabled', () => {
+  const value = { minimal: { text: '简短回复' }, concise: { text: '具体的一句话' } };
+  assert.deepEqual(parse(value, 'zh-Hans'), [
+    { tone: 'minimal', text: '简短回复' }, { tone: 'concise', text: '具体的一句话' }
+  ]);
+  assert.deepEqual(parse({ language: 'zh-CN', ...value }, 'zh-Hans'), [
+    { tone: 'minimal', text: '简短回复' }, { tone: 'concise', text: '具体的一句话' }
+  ]);
+  assert.deepEqual(parse({ language: 'English', replies: [{ style: '极简', reply: 'A short reply.' }] }, 'zh-Hans'), [
+    { tone: 'minimal', text: 'A short reply.' }
+  ]);
+  assert.deepEqual(parse({ minimal: { text: 'A short reply.', reference: '简短回复。' } }, 'zh-Hans'), [
+    { tone: 'minimal', text: 'A short reply.', reference: '简短回复。' }
+  ]);
+  assert.deepEqual(parse({ language: 'zh-Hans', minimal: { text: 'A short reply.', translation: '简短回复。' } }, 'zh-Hans'), [
+    { tone: 'minimal', text: 'A short reply.', reference: '简短回复。' }
+  ]);
 });
 
 import { postPhotos } from '../ai/photos.mjs';
@@ -239,7 +273,7 @@ test('requests and parses only enabled styles, including optional bilingual styl
   assert.deepEqual(read(), [{ tone: 'enthusiastic', ...output.enthusiastic }]);
   output.dryHumor = { ...output.enthusiastic };
   delete output.enthusiastic.reference;
-  assert.deepEqual(read(), [{ tone: 'dryHumor', ...output.dryHumor }]);
+  assert.deepEqual(read(), [{ tone: 'enthusiastic', text: 'A chatty reply.' }]);
 });
 test('Ask Grok is opt-in and keeps the mention in the comment and the translation in its own field', () => {
   const prompt = styles => makeRequest({ provider: 'openai', styles }, 'Why is the moon orange?').body.messages[0].content;

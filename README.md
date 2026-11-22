@@ -1,7 +1,5 @@
 # xClick
 
-**English** · [简体中文](README.zh-CN.md)
-
 xClick is a Chrome / Edge Manifest V3 extension that adds lightweight interaction effects to X:
 - Like: neon heart bursts, rotating visual variants, and synthesized click feedback.
 - Follow: expanding rings, profile-follow cues, and alternate sound palettes.
@@ -11,8 +9,6 @@ xClick is a Chrome / Edge Manifest V3 extension that adds lightweight interactio
 All sounds are synthesized locally with the Web Audio API.
 
 ## AI reply drafts
-
-xClick v0.5.0 uses your own API token for AI features. Your provider or relay handles usage and billing. Local interaction effects work without a token.
 
 1. Open **Configure provider** and choose your provider. Pick a suggested model or enter a custom ID. For OpenAI, Claude, Gemini, Grok, DeepSeek, Kimi and Doubao, enter your API key and use **Load provider models** to retrieve the provider’s list. With a saved key and host access, the list loads automatically. Qwen and GLM use built-in suggestions. Save your selection. For Doubao, use the Beijing Ark API key value and select a model, or enter your custom inference endpoint ID (`ep-…`).
 2. Click the sparkle icon (**AI Generate / AI 生成**) at the end of the media and emoji tools in the reply composer. The sliders beside it open AI settings. Suggestions appear below the toolbar. Your provider uses the original post as its main source and up to five already-loaded comments from the discussion as optional background. It drafts replies in its primary language (English, Simplified Chinese, or Traditional Chinese). API charges may apply.
@@ -48,7 +44,7 @@ AI settings remember the last saved key, API address and models for each provide
 1. Open chrome://extensions or edge://extensions.
 2. Enable Developer mode.
 3. Click Load unpacked.
-4. Extract `xclick-v0.5.0.zip` and select the folder containing `manifest.json`, or select the project folder when installing from source.
+4. Select this project folder.
 5. Refresh x.com.
 
 ## Development
@@ -60,8 +56,8 @@ See the [development guide](docs/DEVELOPMENT.md) for local checks and browser te
 
 ## Release
 - Current version: 0.5.0
-- Release tag: v0.5.0
-- Release asset: [xclick-v0.5.0.zip](https://github.com/mCapricorn/xClick/releases/download/v0.5.0/xclick-v0.5.0.zip)
+- Suggested release tag: v0.5.0
+- Suggested release asset: xclick-v0.5.0.zip
 
 ### 0.5.0
 - Generate English or Chinese reply drafts with a user-configured AI provider.

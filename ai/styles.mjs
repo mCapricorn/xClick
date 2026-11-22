@@ -37,6 +37,17 @@ export function selectedStyles(value, custom) {
   return valid.length ? valid : [...defaultStyles];
 }
 
+export function adaptiveStyles(value, custom, enabled, preferences) {
+  const styles = selectedStyles(value, custom);
+  if (enabled !== true || !preferences || typeof preferences !== 'object') return styles;
+  const total = styles.reduce((sum, id) => sum + Math.max(0, Number(preferences[id]) || 0), 0);
+  const limit = total < 4 ? styles.length : total < 8 ? Math.min(5, styles.length) : total < 14 ? Math.min(4, styles.length) : Math.min(3, styles.length);
+  if (limit >= styles.length) return styles;
+  return styles.map((id, index) => ({ id, index, count: Math.max(0, Number(preferences[id]) || 0) }))
+    .sort((left, right) => right.count - left.count || left.index - right.index)
+    .slice(0, limit).map(({ id }) => id);
+}
+
 export function composerLabels(language, custom) {
   const index = Math.max(0, styleLanguages.indexOf(language));
   return Object.fromEntries([...styleIds.map(id => [id, styleLabels[id][index]]),

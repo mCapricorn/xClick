@@ -1,12 +1,13 @@
 import { mediaKinds, videoOrigins } from './media.mjs';
 import { nativeLanguages } from './drafts.mjs';
 import { replyStudio } from './reply-studio.mjs';
-import { setLabel } from '../ui-language.mjs';
+import { setLabel, translated } from '../ui-language.mjs';
 import { applyPalette, themeKeys } from '../ui-theme.mjs';
 import { configuration } from './config.mjs';
 import { supportsPostPhotos } from './vision.mjs';
 import { providers, apiBase, apiPermission } from './providers.mjs';
 import { catalogues, fetchModels } from './models.mjs';
+import { composerLabels } from './styles.mjs';
 
 function refreshTheme() {
   chrome.storage.local.get(themeKeys, values =>
@@ -26,19 +27,20 @@ const catalogueStatus = document.querySelector('#catalogueStatus');
 let pending;
 const profiles = new Map();
 let saved; // Profile selected in the form.
-const { bilingual, nativeLanguage, includePhotos } = form.elements;
+const { bilingual, nativeLanguage, includePhotos, adaptiveStyles: adaptiveSwitch } = form.elements;
 for (const [id, label] of Object.entries(nativeLanguages)) nativeLanguage.add(new Option(label, id));
 bilingual.onchange = () => { nativeLanguage.disabled = !bilingual.checked; };
 function modelConfig() {
   return { provider: provider.value, model: model.value || manual.value.trim(), key: effectiveKey(),
     base_url: base_url.value.trim(), workspace: workspace.value.trim(),
-    bilingual: bilingual.checked, nativeLanguage: nativeLanguage.value };
+    bilingual: bilingual.checked, nativeLanguage: nativeLanguage.value, adaptiveStyles: adaptiveSwitch.checked };
 }
 const studio = replyStudio(form, modelConfig);
 function restoreReplyOptions(active) {
   studio.restore(active);
   includePhotos.checked = active?.includePhotos !== false;
   bilingual.checked = active?.bilingual === true;
+  adaptiveSwitch.checked = active?.adaptiveStyles === true;
   nativeLanguage.value = active?.nativeLanguage || document.documentElement.lang;
   bilingual.onchange();
 }
@@ -166,6 +168,19 @@ try {
 } catch { restoreReplyOptions(); setLabel(status, 'readError'); }
 showProvider();
 provider.onchange = () => { setLabel(status, ''); showProvider(); };
+function savedSummary(config) {
+  const labels = composerLabels(document.documentElement.lang, config.customStyles);
+  const styles = config.styles.map(id => labels[id] || id).join(' / ');
+  const providerName = translated(config.provider) || providers[config.provider]?.name || config.provider;
+  const native = config.bilingual ? nativeLanguage.selectedOptions[0]?.textContent || config.nativeLanguage : translated('disabled');
+  const adaptive = translated(config.adaptiveStyles ? 'enabled' : 'disabled');
+  return translated('savedDetails')
+    .replace('{provider}', providerName)
+    .replace('{model}', config.model)
+    .replace('{styles}', styles)
+    .replace('{native}', native)
+    .replace('{adaptive}', adaptive);
+}
 form.onsubmit = async event => {
   event.preventDefault();
   const id = provider.value;
@@ -208,7 +223,8 @@ form.onsubmit = async event => {
     key.required = false;
     setLabel(key, 'saved', 'placeholder');
     if (catalogueStatus.dataset.i18n === 'presetModels') loadModels();
-    setLabel(status, 'saved');
+    status.removeAttribute('data-i18n');
+    status.textContent = savedSummary(next);
   } catch { setLabel(status, 'saveError'); }
 };
 document.querySelector('#clear').onclick = async () => {
