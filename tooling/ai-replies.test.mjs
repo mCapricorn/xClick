@@ -53,6 +53,12 @@ test('HTTP relay on a custom port serves model discovery and reply generation', 
   assert.deepEqual(requests, [['GET', '/v1/models', 'Bearer fixture'], ['POST', '/v1/chat/completions', 'Bearer fixture']]);
 });
 
+test('allocates more output space for adaptive bilingual batches', () => {
+  const { body } = makeRequest({ provider: 'openai', model: 'fixture', key: 'fixture',
+    styles: ['minimal', 'concise', 'vivid', 'askGrok'], bilingual: true, nativeLanguage: 'zh-Hans' }, 'Post');
+  assert.equal(body.max_tokens, 640);
+});
+
 test('invalid relay URLs cannot be used for authenticated requests', () => {
   for (const value of ['ftp://relay.example', 'http://user:password@relay.example', 'https://*.example', 'https://name:secret@relay.example',
     'https://relay.example/v1?token=example', 'https://relay.example/#part', '/relative']) {

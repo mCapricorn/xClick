@@ -120,7 +120,32 @@ test('parses Doubao SSE fragments through the same streaming path', async t => {
   assert.deepEqual(result.replies, [{ tone: 'minimal', text: '豆包回复。' }]);
 });
 
-test('classifies cancellation and timeout without retrying the request', async t => {
+test('falls back to a complete response when streaming output is unusable', async t => {
+  let requests = 0;
+  t.mock.method(globalThis, 'fetch', async (_, options) => {
+    requests++;
+    const body = JSON.parse(options.body);
+    if (requests === 1) {
+      assert.equal(body.stream, true);
+      const encoder = new TextEncoder();
+      const stream = new ReadableStream({
+        start(controller) {
+          controller.enqueue(encoder.encode('data: [DONE]\n\n'));
+          controller.close();
+        }
+      });
+      return new Response(stream, { headers: { 'content-type': 'text/event-stream' } });
+    }
+    assert.equal(body.stream, undefined);
+    return Response.json({ choices: [{ message: { content: JSON.stringify({ minimal: { text: '完整回复。' } }) } }] });
+  });
+  const result = await generateDrafts({ provider: 'openai', model: 'fixture', key: 'fixture', styles: ['minimal'] },
+    'Post', [], [], undefined, { onReply() {} });
+  assert.equal(requests, 2);
+  assert.deepEqual(result.replies, [{ tone: 'minimal', text: '完整回复。' }]);
+});
+
+test('classifies cancellation without retrying and retries timeout without streaming', async t => {
   let requests = 0;
   t.mock.method(globalThis, 'fetch', (_, { signal }) => {
     requests++;
@@ -137,5 +162,5 @@ test('classifies cancellation and timeout without retrying the request', async t
   assert.deepEqual(await cancelled, { error: 'cancelled' });
   assert.deepEqual(await generateDrafts({ provider: 'openai', model: 'fixture', key: 'fixture', styles: ['minimal'] },
     'Post', [], [], undefined, { onReply() {}, timeout: 5 }), { error: 'timeout' });
-  assert.equal(requests, 2);
+  assert.equal(requests, 3);
 });

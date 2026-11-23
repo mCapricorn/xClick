@@ -13,7 +13,12 @@ export const providers = {
 };
 
 export const streamingProviders = new Set(['openai', 'deepseek', 'qwen', 'glm', 'kimi', 'doubao']);
-const replyTokenLimit = 320;
+
+function replyTokenLimit(config) {
+  const count = Array.isArray(config.styles) ? config.styles.length : 1;
+  const bilingual = referenceLanguage(config) ? 1 : 0;
+  return Math.min(1024, Math.max(320, count * (bilingual ? 160 : 96)));
+}
 
 // The base includes the version or relay prefix. Operation paths are appended to it.
 export function apiBase(provider, base_url = '') {
@@ -50,15 +55,16 @@ export function jsonRequest(config, system, user, photos = [], options = {}) {
   const { path } = providers[provider];
   const base = apiBase(provider, config.base_url);
   const headers = { ...authHeaders(config), 'Content-Type': 'application/json' };
+  const maxTokens = replyTokenLimit(config);
   if (provider === 'google') {
     const modelId = model.replace(/^models\//, '');
     return { url: base + '/models/' + encodeURIComponent(modelId) + ':generateContent', headers,
       body: { systemInstruction: { parts: [{ text: system }] }, contents: [{ role: 'user', parts: [{ text: user }, ...photos.map(({ uri, mimeType }) => ({ fileData: { fileUri: uri, mimeType } }))] }],
-        generationConfig: { responseMimeType: 'application/json', maxOutputTokens: replyTokenLimit } } };
+        generationConfig: { responseMimeType: 'application/json', maxOutputTokens: maxTokens } } };
   }
   if (provider === 'anthropic') {
     const content = photos.length ? [...photos.map(({ uri }) => ({ type: 'image', source: { type: 'url', url: uri } })), { type: 'text', text: user }] : user;
-    return { url: base + path, headers, body: { model, system, max_tokens: replyTokenLimit, messages: [{ role: 'user', content }] } };
+    return { url: base + path, headers, body: { model, system, max_tokens: maxTokens, messages: [{ role: 'user', content }] } };
   }
   let content = user;
   if (photos.length) {
@@ -68,11 +74,11 @@ export function jsonRequest(config, system, user, photos = [], options = {}) {
   }
   const messages = [{ role: 'system', content: system }, { role: 'user', content }];
   if (provider === 'grok') {
-    const body = { model, input: messages, store: false, max_output_tokens: replyTokenLimit };
+    const body = { model, input: messages, store: false, max_output_tokens: maxTokens };
     if (['grok-4.5', 'grok-4.6', 'grok-4.7'].includes(model)) body.reasoning = { effort: 'low' };
     return { url: base + path, headers, body };
   }
-  const body = { model, messages, max_tokens: replyTokenLimit };
+  const body = { model, messages, max_tokens: maxTokens };
   if (provider === 'kimi' && ['kimi-k3.1-pro', 'kimi-k3.1-pro-highspeed'].includes(model)) body.reasoning_effort = 'low';
   if (options.stream && streamingProviders.has(provider)) body.stream = true;
   return { url: base + path, headers, body };
@@ -82,6 +88,7 @@ export function requestError(error) {
   if (error?.result) return error.result;
   if (error?.name === 'TimeoutError') return { error: 'timeout' };
   if (error?.name === 'AbortError' || error?.name === 'CanceledError') return { error: 'cancelled' };
+  if (error?.name === 'FormatError' || error?.message === 'format') return { error: 'format' };
   return { error: 'network' };
 }
 

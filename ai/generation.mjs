@@ -55,15 +55,28 @@ async function generateBatch(config, post, comments, photos, postLanguage, style
   options.onStatus?.('generating');
   let response;
   try { response = await send(streaming); }
-  catch (error) { return requestError(error); }
+  catch (error) {
+    const failure = requestError(error);
+    if (!streaming || failure.error === 'cancelled') return failure;
+    try { response = await send(false); }
+    catch (fallbackError) { return requestError(fallbackError); }
+  }
   if (!response.ok) {
     const failure = await readProviderError(config.provider, response, attachments.length > 0);
-    if (failure.error !== 'photoRequest') return failure;
-    if (!post.trim()) return failure;
-    attachments = [];
-    try { response = await send(streaming); }
-    catch (error) { return requestError(error); }
-    if (!response.ok) return readProviderError(config.provider, response);
+    if (failure.error !== 'photoRequest') {
+      const streamUnsupported = streaming && [400, 404, 405, 415, 422, 501].includes(response.status);
+      if (!streamUnsupported) return failure;
+      try { response = await send(false); }
+      catch (fallbackError) { return requestError(fallbackError); }
+      if (!response.ok) return readProviderError(config.provider, response);
+    }
+    if (failure.error === 'photoRequest') {
+      if (!post.trim()) return failure;
+      attachments = [];
+      try { response = await send(streaming); }
+      catch (error) { return requestError(error); }
+      if (!response.ok) return readProviderError(config.provider, response);
+    }
   }
   const native = referenceLanguage(config);
   if (streaming && /text\/event-stream/i.test(response.headers.get('content-type') || '')) {
@@ -78,7 +91,13 @@ async function generateBatch(config, post, comments, photos, postLanguage, style
       const replies = readReplies(config.provider, { choices: [{ message: { content: text } }] }, native, styles, config.customStyles);
       options.onStatus?.('done');
       return { replies, photoCount: attachments.length, labelLanguage: native };
-    } catch (error) { return requestError(error); }
+    } catch (error) {
+      const failure = requestError(error);
+      if (failure.error === 'cancelled') return failure;
+      try { response = await send(false); }
+      catch (fallbackError) { return requestError(fallbackError); }
+      if (!response.ok) return readProviderError(config.provider, response);
+    }
   }
   try {
     options.onStatus?.('validating');
