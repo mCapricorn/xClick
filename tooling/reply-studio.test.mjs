@@ -120,6 +120,28 @@ test('parses Doubao SSE fragments through the same streaming path', async t => {
   assert.deepEqual(result.replies, [{ tone: 'minimal', text: '豆包回复。' }]);
 });
 
+for (const provider of ['deepseek', 'qwen', 'glm', 'kimi']) {
+  test(`parses ${provider} OpenAI-compatible SSE fragments`, async t => {
+    t.mock.method(globalThis, 'fetch', async (_, options) => {
+      assert.equal(JSON.parse(options.body).stream, true);
+      const encoder = new TextEncoder();
+      const stream = new ReadableStream({
+        start(controller) {
+          for (const content of ['{"minimal":{"text":"', `${provider} 回复。"}}`]) {
+            controller.enqueue(encoder.encode(`data: ${JSON.stringify({ choices: [{ delta: { content } }] })}\n\n`));
+          }
+          controller.enqueue(encoder.encode('data: [DONE]\n\n'));
+          controller.close();
+        }
+      });
+      return new Response(stream, { headers: { 'content-type': 'text/event-stream' } });
+    });
+    const result = await generateDrafts({ provider, model: 'fixture', key: 'fixture', styles: ['minimal'] },
+      'Post', [], [], undefined, { onReply() {} });
+    assert.deepEqual(result.replies, [{ tone: 'minimal', text: `${provider} 回复。` }]);
+  });
+}
+
 test('falls back to a complete response when streaming output is unusable', async t => {
   let requests = 0;
   t.mock.method(globalThis, 'fetch', async (_, options) => {
