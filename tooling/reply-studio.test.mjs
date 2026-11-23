@@ -38,6 +38,12 @@ test('learns selected styles and sends one request for the adaptive set', async 
     { minimal: 8, concise: 4, conversational: 2 }), ['minimal', 'concise', 'conversational']);
   assert.deepEqual(adaptiveStyles(['minimal', 'concise', 'conversational'], [], false, { minimal: 20 }),
     ['minimal', 'concise', 'conversational']);
+  assert.deepEqual(adaptiveStyles(['minimal', 'concise'], [], true, {}),
+    ['minimal', 'concise', 'conversational', 'vivid']);
+  assert.deepEqual(adaptiveStyles(['minimal', 'concise'], [], true, { vivid: 5 }),
+    ['vivid', 'minimal', 'concise', 'conversational']);
+  assert.deepEqual(adaptiveStyles(['minimal', 'concise'], [{ id: 'custom-garden', name: 'Garden notes', prompt: 'Focus on one leaf.' }], true, {}),
+    ['minimal', 'concise', 'conversational', 'vivid']);
 
   let calls = 0;
   const progress = [];
