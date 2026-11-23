@@ -98,21 +98,29 @@ export function parseDrafts(value, native, styles, custom) {
       candidates.set(tone, item);
     }
   };
+  const addObject = object => {
+    const unlabelled = [];
+    for (const [key, item] of Object.entries(object)) {
+      if (['language', 'replies', 'suggestions', 'candidates', 'data'].includes(key)) continue;
+      const tone = aliases.get(normalizedLabel(key));
+      if (tone && selected.includes(tone)) addCandidate(key, item);
+      else if (typeof item === 'string' || (item && typeof item === 'object')) unlabelled.push(item);
+    }
+    for (const item of unlabelled) {
+      const tone = selected.find(id => !candidates.has(id));
+      if (!tone) break;
+      candidates.set(tone, item);
+    }
+  };
   if (Array.isArray(value)) addList(value);
   else if (value && typeof value === 'object') {
-    for (const [key, item] of Object.entries(value)) {
-      if (['language', 'replies', 'suggestions', 'candidates', 'data'].includes(key)) continue;
-      addCandidate(key, item);
-    }
+    addObject(value);
     for (const key of ['replies', 'suggestions', 'candidates']) {
       if (Array.isArray(value[key])) addList(value[key]);
-      else if (value[key] && typeof value[key] === 'object') {
-        for (const [tone, item] of Object.entries(value[key])) addCandidate(tone, item);
-      }
+      else if (value[key] && typeof value[key] === 'object') addObject(value[key]);
     }
-    if (value.data && typeof value.data === 'object') {
-      for (const [tone, item] of Object.entries(value.data)) addCandidate(tone, item);
-    }
+    if (Array.isArray(value.data)) addList(value.data);
+    else if (value.data && typeof value.data === 'object') addObject(value.data);
     const generic = value.reply ?? value.text ?? value.content;
     if (!candidates.size && generic) candidates.set(selected[0], generic);
   }
