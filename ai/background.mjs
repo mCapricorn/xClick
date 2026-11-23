@@ -76,7 +76,8 @@ chrome.runtime.onMessage.addListener((message, sender, respond) => {
   const controller = new AbortController();
   activeRequests.set(key, controller);
   const sendProgress = message.requestId && sender.tab.id
-    ? update => chrome.tabs.sendMessage(sender.tab.id, { type: 'xc-ai-progress', requestId: message.requestId, ...update }).catch(() => {})
+    ? update => Promise.resolve().then(() => chrome.tabs.sendMessage(sender.tab.id,
+      { type: 'xc-ai-progress', requestId: message.requestId, ...update })).catch(() => {})
     : undefined;
   const onStatus = sendProgress && (status => sendProgress({ status }));
   onStatus?.('preparing');

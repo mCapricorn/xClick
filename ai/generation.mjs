@@ -108,6 +108,9 @@ async function generateBatch(config, post, comments, photos, postLanguage, style
 async function generateProgressively(config, post, comments, photos, postLanguage, onReply, options) {
   const styles = generationStyles(adaptiveStyles(config.styles, config.customStyles, config.adaptiveStyles, config.stylePreferences));
   options.onStatus?.('analyzing');
+  const emitReply = async (reply, partial) => {
+    try { await onReply(reply, partial); } catch { /* A closed content-script channel must not fail the provider request. */ }
+  };
   const replies = [];
   let firstError;
   let photoCount = 0;
@@ -115,18 +118,18 @@ async function generateProgressively(config, post, comments, photos, postLanguag
   for (const style of styles) {
     const partialTones = new Set();
     const result = await generateBatch(config, post, comments, photos, postLanguage, [style],
-      async reply => { partialTones.add(reply.tone); await onReply(reply, true); }, options);
+      async reply => { partialTones.add(reply.tone); await emitReply(reply, true); }, options);
     photoCount = Math.max(photoCount, result.photoCount || 0);
     labelLanguage ||= result.labelLanguage;
     const completeTones = new Set(result.replies?.map(reply => reply.tone) || []);
     for (const tone of partialTones) {
-      if (!completeTones.has(tone)) await onReply({ tone, remove: true }, false);
+      if (!completeTones.has(tone)) await emitReply({ tone, remove: true }, false);
     }
     if (result.error === 'cancelled') return replies.length ? { replies, photoCount, labelLanguage, partial: true } : result;
     if (result.replies?.length) {
       for (const reply of result.replies) {
         replies.push(reply);
-        await onReply(reply, false);
+        await emitReply(reply, false);
       }
     } else if (!firstError && result.error) firstError = result;
   }
