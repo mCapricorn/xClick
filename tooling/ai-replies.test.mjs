@@ -255,6 +255,15 @@ test('accepts omitted language and common language tags when references are enab
     { tone: 'minimal', text: 'A short reply.', reference: '简短回复。' }
   ]);
 });
+test('maps wrapped or unlabeled provider candidates by requested order', () => {
+  const parseStyles = value => readReplies('openai', { choices: [{ message: { content: JSON.stringify(value) } }] }, null, ['minimal', 'concise']);
+  assert.deepEqual(parseStyles({ answer_one: { text: 'First reply.' }, answer_two: { content: 'Second reply.' } }), [
+    { tone: 'minimal', text: 'First reply.' }, { tone: 'concise', text: 'Second reply.' }
+  ]);
+  assert.deepEqual(parseStyles({ data: [{ reply: 'First reply.' }, { text: 'Second reply.' }] }), [
+    { tone: 'minimal', text: 'First reply.' }, { tone: 'concise', text: 'Second reply.' }
+  ]);
+});
 
 import { postPhotos } from '../ai/photos.mjs';
 import { selectedStyles, styleIds, defaultStyles, composerLabels, styleLanguages } from '../ai/styles.mjs';
