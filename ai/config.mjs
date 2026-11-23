@@ -8,7 +8,7 @@ export async function configuration(action, value) {
   });
   try {
     return await new Promise((resolve, reject) => {
-      const writable = action === 'write' || action === 'delete';
+      const writable = action === 'write' || action === 'delete' || action === 'selectStyle';
       const tx = db.transaction('settings', writable ? 'readwrite' : 'readonly');
       const store = tx.objectStore('settings');
       const active = store.get('active');
@@ -22,8 +22,22 @@ export async function configuration(action, value) {
           if (previous && previous.provider !== value.provider) {
             store.put(previous, `provider:${previous.provider}`);
           }
+          const stylePreferences = value?.stylePreferences && typeof value.stylePreferences === 'object'
+            ? value.stylePreferences : previous?.stylePreferences || {};
+          const next = { ...value, stylePreferences };
           store.delete(`provider:${value.provider}`);
-          store.put(value, 'active');
+          store.put(next, 'active');
+        };
+      }
+      if (action === 'selectStyle') {
+        active.onsuccess = () => {
+          const previous = active.result;
+          if (!previous || typeof value?.style !== 'string') return;
+          const preferences = { ...(previous.stylePreferences || {}) };
+          preferences[value.style] = (Number(preferences[value.style]) || 0) + 1;
+          const next = { ...previous, stylePreferences: preferences };
+          store.put(next, 'active');
+          if (previous.provider) store.put(next, `provider:${previous.provider}`);
         };
       }
       tx.oncomplete = () => {

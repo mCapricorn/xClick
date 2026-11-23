@@ -3,7 +3,12 @@
   const postSelector = '[data-testid="tweetText"]';
   const articleSelector = 'article, [data-testid="tweet"]';
   const mounted = new Map();
+  const progressListeners = new Map();
   let pendingReply;
+  chrome.runtime.onMessage.addListener(message => {
+    if (message?.type !== 'xc-ai-progress') return;
+    progressListeners.get(message.requestId)?.(message);
+  });
   const zh = (document.documentElement.lang || navigator.language).toLowerCase().startsWith('zh');
   const t = (en, cn) => zh ? cn : en;
   const errors = {
@@ -24,6 +29,8 @@
     arkEndpoint: t('Ark requires a custom endpoint for this account. Enter its ep-… ID under Model in AI settings.', '方舟要求此账号使用自定义接入点。请在 AI 设置的模型栏手动填写 ep-… 接入点 ID。'),
     arkAccess: t('Ark could not find or grant access to this model or endpoint. Check its ID and key permissions in the Beijing Ark console.', '方舟找不到此模型或接入点，或密钥无权访问。请在北京区控制台核对 ID 和密钥的授权范围。'),
     network: t('Request failed or timed out. Try again.', '请求失败或超时，请重试。'),
+    timeout: t('The provider did not respond in time. Try again.', '厂商响应超时，请重试。'),
+    cancelled: t('Generation canceled.', '已取消生成。'),
     format: t('The response contained no readable suggestions. Try generating again.', '返回内容中没有可读取的候选回复，请重新生成。'),
     photosDisabled: t('Turn on Send post photos in AI settings and save to use this image-only post.', '这条帖子只有图片，请在 AI 设置中开启发送配图并保存。'),
     visionUnknown: t('xClick does not recognize the saved model ID as a vision model. Check the model in AI settings.', 'xClick 尚未将已保存的型号识别为视觉模型，请核对 AI 设置中的型号。'),
@@ -321,87 +328,192 @@
     if (nativeSize) host.style.setProperty('--tool-size', `${Math.max(24, Math.min(40, nativeSize))}px`);
     placement.group.insertBefore(host, placement.before);
     placement.row.after(panel);
-    mounted.set(editor, { host, panel, postId, container });
+    let cancelGeneration = () => {};
+    mounted.set(editor, { host, panel, postId, container, cancel: () => cancelGeneration() });
     const current = snapshot => host.isConnected && container.contains(editor) &&
       (!postId || detailId() === postId) && JSON.stringify(context()) === JSON.stringify(snapshot);
+    let labels = {};
+    let labelLanguage;
+    let mediaKinds = [];
+    let mediaBarShown = false;
+    let activeRequestId;
+    const shownTones = new Set();
+    const draftRows = new Map();
+    function addMediaSetup() {
+      if (mediaBarShown || mediaKinds.includes('image')) return;
+      mediaBarShown = true;
+      const bar = document.createElement('div');
+      bar.className = 'media-actions';
+      const setup = button(t('Set up image generation', '配置生图模型'));
+      setup.onclick = settings.onclick;
+      const hint = document.createElement('small');
+      hint.textContent = t('Choose OpenAI GPT-6.2 Sol or configure a Doubao image model.', '可选择 OpenAI 的 GPT-6.2 Sol，或在豆包高级设置里配置生图模型。');
+      bar.append(setup, hint);
+      results.prepend(bar);
+    }
+    function appendReply(reply, replyLabels, replyMediaKinds, replyLanguage, snapshot, partial = false, remove = false) {
+      if (!reply?.tone) return;
+      if (remove) {
+        draftRows.get(reply.tone)?.row.remove();
+        draftRows.delete(reply.tone);
+        shownTones.delete(reply.tone);
+        return;
+      }
+      const existing = draftRows.get(reply.tone);
+      if (existing) {
+        existing.currentText = reply.text;
+        existing.wording.textContent = reply.text;
+        existing.setReference(reply.reference, replyLanguage);
+        return;
+      }
+      if (shownTones.has(reply.tone)) return;
+      shownTones.add(reply.tone);
+      labels = replyLabels || labels;
+      labelLanguage = replyLanguage || labelLanguage;
+      mediaKinds = replyMediaKinds || mediaKinds;
+      addMediaSetup();
+      const { tone: style, text, reference } = reply;
+      const choice = button('');
+      choice.className = 'draft';
+      const tone = document.createElement('strong');
+      tone.textContent = labels[style] || style;
+      const wording = document.createElement('span');
+      wording.className = 'text';
+      wording.textContent = text;
+      choice.append(tone, wording);
+      let note;
+      const setReference = (value, language) => {
+        if (!value) return;
+        if (!note) { note = document.createElement('small'); choice.append(note); }
+        note.textContent = value;
+        if (language) note.lang = language;
+      };
+      setReference(reference, labelLanguage);
+      const entry = { row: null, wording, choice, currentText: text, setReference };
+      const row = document.createElement('div');
+      row.className = 'draft-row';
+      row.append(choice);
+      entry.row = row;
+      draftRows.set(style, entry);
+      choice.onclick = async e => {
+        if (!e.isTrusted || applying || !current(snapshot)) return;
+        applying = true;
+        try {
+          if (!await appendDraft(editor, entry.currentText)) {
+            status.textContent = t('Select and copy the draft into your reply.', '请选择并复制候选内容到回复框。');
+            return;
+          }
+          choice.remove();
+          chrome.runtime.sendMessage({ type: 'xc-ai-style-selected', style }).catch(() => {});
+          for (const sibling of [...results.children]) {
+            if (sibling !== row && sibling.classList.contains('draft-row')) sibling.remove();
+          }
+          status.setAttribute('data-added', '');
+          status.textContent = t('Added to your draft.', '已追加到回复草稿。');
+          globalThis.xClickDraftSound?.('draftInsert');
+        } finally { applying = false; }
+      };
+      results.append(row);
+      if (mediaKinds.length) globalThis.xClickMediaActions({ kinds:mediaKinds, parent:row, t, text, snapshot, current, scope:placement.scope, status, errors });
+    }
     settings.onclick = event => {
       if (event.isTrusted) chrome.runtime.sendMessage({ type: 'xc-ai-settings' });
     };
+    const generationLabel = active => active
+      ? t('Cancel AI generation', '取消 AI 生成')
+      : t('AI Generate', 'AI 生成');
+    function updateGenerationLabel(active) {
+      const label = generationLabel(active);
+      generate.title = label;
+      generate.setAttribute('aria-label', label);
+    }
     generate.onclick = async event => {
-      if (!event.isTrusted || generate.disabled) return;
+      if (!event.isTrusted) return;
+      if (activeRequestId) {
+        cancelGeneration();
+        return;
+      }
       const snapshot = context();
       const { post, images } = snapshot;
       results.replaceChildren();
+      shownTones.clear();
+      draftRows.clear();
+      labels = {};
+      labelLanguage = undefined;
+      mediaKinds = [];
+      mediaBarShown = false;
       status.removeAttribute('data-added');
       if (!post && !images.length) { status.textContent = errors.context; return; }
-      generate.disabled = true;
       globalThis.xClickDraftSound?.('draftStart');
       status.dataset.loading = '';
-      status.textContent = t('Generating…', '正在生成…');
+      status.textContent = t('Preparing…', '正在准备…');
+      const requestId = globalThis.crypto?.randomUUID?.() || `draft-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      activeRequestId = requestId;
+      updateGenerationLabel(true);
+      cancelGeneration = () => {
+        if (activeRequestId !== requestId) return;
+        activeRequestId = undefined;
+        progressListeners.delete(requestId);
+        chrome.runtime.sendMessage({ type: 'xc-ai-cancel', requestId }).catch(() => {});
+        delete status.dataset.loading;
+        status.textContent = errors.cancelled;
+        updateGenerationLabel(false);
+      };
+      progressListeners.set(requestId, progress => {
+        if (!current(snapshot)) { cancelGeneration(); return; }
+        if (status.hasAttribute('data-added')) return;
+        if (progress.status) {
+          status.textContent = {
+            preparing: t('Preparing…', '正在准备…'),
+            analyzing: t('Analyzing context…', '正在分析上下文…'),
+            generating: t('Generating…', '正在生成…'),
+            validating: t('Checking suggestions…', '正在检查候选…'),
+            done: t('Choose a reply', '请选择回复。')
+          }[progress.status] || status.textContent;
+        }
+        appendReply(progress.reply, progress.labels, progress.mediaKinds, progress.labelLanguage, snapshot, progress.partial, progress.remove);
+        if (progress.reply) status.textContent = t('Receiving replies…', '正在接收回复…');
+      });
       try {
         const comments = commentsFor?.(post) || [];
-        const response = await chrome.runtime.sendMessage({ type: 'xc-ai-generate', post, comments, images, postLanguage: snapshot.postLanguage, uiLanguage: t('en', 'zh-Hans') });
+        const response = await chrome.runtime.sendMessage({ type: 'xc-ai-generate', requestId, post, comments, images, postLanguage: snapshot.postLanguage, uiLanguage: t('en', 'zh-Hans') });
+        if (activeRequestId !== requestId) return;
+        activeRequestId = undefined;
+        progressListeners.delete(requestId);
         if (!current(snapshot)) { status.textContent = ''; return; }
         if (!response?.replies) {
-          status.textContent = (errors[response?.error] || errors.network) + (response?.status ? ' (' + response.status + ')' : '');
+          status.textContent = shownTones.size
+            ? t('Some replies are ready. Try again for the remaining styles.', '部分回复已生成，可重新生成剩余风格。')
+            : (errors[response?.error] || errors.network) + (response?.status ? ' (' + response.status + ')' : '');
           return;
         }
-        status.textContent = t('Choose a reply', '选择回复');
-        if (images.length) status.textContent += response.photoCount
-          ? t(` · ${response.photoCount} photos`, ` · ${response.photoCount} 张配图`)
-          : t(' · Text only', ' · 仅文字');
-        const labels = response.labels;
-        const mediaKinds = response.mediaKinds || [];
-        if (!mediaKinds.includes('image')) {
-          const bar = document.createElement('div');
-          bar.className = 'media-actions';
-          const setup = button(t('Set up image generation', '配置生图模型'));
-          setup.onclick = settings.onclick;
-          const hint = document.createElement('small');
-          hint.textContent = t('Choose OpenAI GPT-6.2 Sol or configure a Doubao image model.', '可选择 OpenAI 的 GPT-6.2 Sol，或在豆包高级设置里配置生图模型。');
-          bar.append(setup, hint);
-          results.append(bar);
+        labels = response.labels || labels;
+        labelLanguage = response.labelLanguage || labelLanguage;
+        mediaKinds = response.mediaKinds || mediaKinds;
+        if (!status.hasAttribute('data-added')) {
+          status.textContent = response.partial
+            ? t('Choose a reply · some styles unavailable', '选择回复 · 部分风格未返回')
+            : t('Choose a reply', '选择回复');
+          if (images.length) status.textContent += response.photoCount
+            ? t(` · ${response.photoCount} photos`, ` · ${response.photoCount} 张配图`)
+            : t(' · Text only', ' · 仅文字');
+          response.replies.forEach(reply => appendReply(reply, labels, mediaKinds, labelLanguage, snapshot, false));
         }
-        response.replies.forEach(({ tone: style, text, reference }) => {
-          const choice = button('');
-          choice.className = 'draft';
-          const tone = document.createElement('strong');
-          tone.textContent = labels[style];
-          const wording = document.createElement('span');
-          wording.className = 'text';
-          wording.textContent = text;
-          choice.append(tone, wording);
-          if (reference) {
-            const note = document.createElement('small');
-            note.textContent = reference;
-            if (response.labelLanguage) note.lang = response.labelLanguage;
-            choice.append(note);
-          }
-          const row = document.createElement('div');
-          row.className = 'draft-row';
-          row.append(choice);
-          choice.onclick = async e => {
-            if (!e.isTrusted || applying || !current(snapshot)) return;
-            applying = true;
-            try {
-              if (!await appendDraft(editor, text)) {
-                status.textContent = t('Select and copy the draft into your reply.', '请选择并复制候选内容到回复框。');
-                return;
-              }
-              choice.remove();
-              for (const sibling of [...results.children]) {
-                if (sibling !== row && sibling.classList.contains('draft-row')) sibling.remove();
-              }
-              status.setAttribute('data-added', '');
-              status.textContent = t('Added to your draft.', '已追加到回复草稿。');
-              globalThis.xClickDraftSound?.('draftInsert');
-            } finally { applying = false; }
-          };
-          results.append(row);
-          if (mediaKinds.length) globalThis.xClickMediaActions({ kinds:mediaKinds, parent:row, t, text, snapshot, current, scope:placement.scope, status, errors });
-        });
-      } catch { status.textContent = errors.network; }
-      finally { delete status.dataset.loading; generate.disabled = false; }
+      } catch {
+        if (activeRequestId !== requestId) return;
+        activeRequestId = undefined;
+        progressListeners.delete(requestId);
+        status.textContent = shownTones.size
+          ? t('Some replies are ready. Try again for the remaining styles.', '部分回复已生成，可重新生成剩余风格。')
+          : errors.network;
+      }
+      finally {
+        if (activeRequestId === requestId) activeRequestId = undefined;
+        if (!activeRequestId) {
+          delete status.dataset.loading;
+          updateGenerationLabel(false);
+        }
+      }
     };
   }
   function findInlineEditor(column) {
@@ -412,8 +524,9 @@
     const id = detailId();
     const column = document.querySelector('[data-testid="primaryColumn"]') || document.querySelector('main, [role="main"]');
     const inlineEditor = id && findInlineEditor(column);
-    for (const [editor, { host, panel, postId, container }] of mounted) {
+    for (const [editor, { host, panel, postId, container, cancel }] of mounted) {
       if (!editor.isConnected || !host.isConnected || !panel.isConnected || !container.contains(editor) || (postId && postId !== id)) {
+        cancel?.();
         host.remove();
         panel.remove();
         mounted.delete(editor);

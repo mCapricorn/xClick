@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { composerLabels, customDefinitions } from '../ai/styles.mjs';
+import { adaptiveStyles, composerLabels, customDefinitions } from '../ai/styles.mjs';
 import { generateDrafts } from '../ai/generation.mjs';
 
 const style = { id: 'custom-garden', name: 'Garden notes', prompt: 'Focus on one leaf.' };
@@ -25,4 +25,111 @@ test('generates checked built-in and custom styles together from a saved configu
     bilingual: true, nativeLanguage: 'zh-Hans' }, 'Two leaves today.', [], []);
   assert.deepEqual(replies.map(draft => draft.tone), ['concise', style.id]);
   assert.equal(replies[1].reference, '第二片叶子很有希望。');
+});
+
+test('learns selected styles and sends one request for the adaptive set', async t => {
+  assert.deepEqual(adaptiveStyles(['minimal', 'concise', 'conversational', 'vivid', 'enthusiastic', 'sincereFriendly'], [], true, {}),
+    ['minimal', 'concise', 'conversational', 'vivid', 'enthusiastic', 'sincereFriendly']);
+  assert.deepEqual(adaptiveStyles(['minimal', 'concise', 'conversational', 'vivid', 'enthusiastic', 'sincereFriendly'], [], true, { minimal: 4 }),
+    ['minimal', 'concise', 'conversational', 'vivid', 'enthusiastic']);
+  assert.deepEqual(adaptiveStyles(['minimal', 'concise', 'conversational', 'vivid', 'enthusiastic', 'sincereFriendly'], [], true,
+    { minimal: 5, concise: 2, conversational: 1 }), ['minimal', 'concise', 'conversational', 'vivid']);
+  assert.deepEqual(adaptiveStyles(['minimal', 'concise', 'conversational', 'vivid', 'enthusiastic', 'sincereFriendly'], [], true,
+    { minimal: 8, concise: 4, conversational: 2 }), ['minimal', 'concise', 'conversational']);
+  assert.deepEqual(adaptiveStyles(['minimal', 'concise', 'conversational'], [], false, { minimal: 20 }),
+    ['minimal', 'concise', 'conversational']);
+
+  let calls = 0;
+  const progress = [];
+  t.mock.method(globalThis, 'fetch', async (_, options) => {
+    calls++;
+    const { messages } = JSON.parse(options.body);
+    const prompt = messages[0].content;
+    const match = prompt.match(/keys ([^\.]+)\./);
+    const style = match?.[1];
+    assert.equal(style, 'minimal, concise, conversational');
+    assert.match(prompt, /include a separate reference field/i);
+    const output = { language: 'en', minimal: { text: 'minimal reply.', reference: 'minimal reference.' },
+      concise: { text: 'concise reply.', reference: 'concise reference.' },
+      conversational: { text: 'conversational reply.', reference: 'conversational reference.' } };
+    return Response.json({ choices: [{ message: { content: JSON.stringify(output) } }] });
+  });
+  const result = await generateDrafts({ provider: 'openai', model: 'fixture', key: 'fixture',
+    styles: ['minimal', 'concise', 'conversational', 'vivid', 'enthusiastic', 'sincereFriendly'],
+    adaptiveStyles: true, stylePreferences: { minimal: 8, concise: 4, conversational: 2 },
+    bilingual: true, nativeLanguage: 'zh-Hans' }, 'Post', [], [], undefined, {
+    onReply: reply => { progress.push(reply.tone); }
+  });
+  assert.equal(calls, 1);
+  assert.deepEqual(progress, ['minimal', 'concise', 'conversational']);
+  assert.deepEqual([...progress].sort(), ['minimal', 'concise', 'conversational'].sort());
+  assert.deepEqual(result.replies.map(reply => reply.tone), ['minimal', 'concise', 'conversational']);
+  assert.deepEqual(result.replies.map(reply => reply.reference), ['minimal reference.', 'concise reference.', 'conversational reference.']);
+});
+
+test('streams the first single-style reply before the full JSON response closes', async t => {
+  const progress = [];
+  t.mock.method(globalThis, 'fetch', async (_, options) => {
+    const body = JSON.parse(options.body);
+    assert.equal(body.stream, true);
+    const fragments = ['{"language":"en","minimal":{"text":"Fast', ' reply"}}'];
+    const encoder = new TextEncoder();
+    const stream = new ReadableStream({
+      start(controller) {
+        for (const fragment of fragments) {
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ choices: [{ delta: { content: fragment } }] })}\n\n`));
+        }
+        controller.enqueue(encoder.encode('data: [DONE]\n\n'));
+        controller.close();
+      }
+    });
+    return new Response(stream, { headers: { 'content-type': 'text/event-stream' } });
+  });
+  const result = await generateDrafts({ provider: 'openai', model: 'fixture', key: 'fixture', styles: ['minimal'] },
+    'Post', [], [], undefined, { onReply: (reply, partial) => progress.push({ reply, partial }) });
+  assert.equal(progress[0].partial, true);
+  assert.equal(progress[0].reply.text, 'Fast');
+  assert.equal(progress.at(-1).partial, false);
+  assert.equal(progress.at(-1).reply.text, 'Fast reply');
+  assert.deepEqual(result.replies, [{ tone: 'minimal', text: 'Fast reply' }]);
+});
+
+test('parses Doubao SSE fragments through the same streaming path', async t => {
+  t.mock.method(globalThis, 'fetch', async (_, options) => {
+    assert.equal(JSON.parse(options.body).stream, true);
+    const encoder = new TextEncoder();
+    const stream = new ReadableStream({
+      start(controller) {
+        const emit = content => controller.enqueue(encoder.encode(`data: ${JSON.stringify({ choices: [{ delta: { content } }] })}\n\n`));
+        emit('{"minimal":{"');
+        emit('text":"豆包回复。"}}');
+        controller.enqueue(encoder.encode('data: [DONE]\n\n'));
+        controller.close();
+      }
+    });
+    return new Response(stream, { headers: { 'content-type': 'text/event-stream' } });
+  });
+  const result = await generateDrafts({ provider: 'doubao', model: 'ep-fixture', key: 'fixture', styles: ['minimal'] },
+    'Post', [], [], undefined, { onReply() {} });
+  assert.deepEqual(result.replies, [{ tone: 'minimal', text: '豆包回复。' }]);
+});
+
+test('classifies cancellation and timeout without retrying the request', async t => {
+  let requests = 0;
+  t.mock.method(globalThis, 'fetch', (_, { signal }) => {
+    requests++;
+    return new Promise((_, reject) => {
+      const fail = () => reject(signal.reason);
+      if (signal.aborted) fail();
+      else signal.addEventListener('abort', fail, { once: true });
+    });
+  });
+  const controller = new AbortController();
+  const cancelled = generateDrafts({ provider: 'openai', model: 'fixture', key: 'fixture', styles: ['minimal'] },
+    'Post', [], [], undefined, { onReply() {}, signal: controller.signal });
+  controller.abort(new DOMException('cancelled', 'AbortError'));
+  assert.deepEqual(await cancelled, { error: 'cancelled' });
+  assert.deepEqual(await generateDrafts({ provider: 'openai', model: 'fixture', key: 'fixture', styles: ['minimal'] },
+    'Post', [], [], undefined, { onReply() {}, timeout: 5 }), { error: 'timeout' });
+  assert.equal(requests, 2);
 });
