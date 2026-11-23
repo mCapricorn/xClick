@@ -40,11 +40,17 @@ export function selectedStyles(value, custom) {
 export function adaptiveStyles(value, custom, enabled, preferences) {
   const styles = selectedStyles(value, custom);
   if (enabled !== true || !preferences || typeof preferences !== 'object') return styles;
-  const total = styles.reduce((sum, id) => sum + Math.max(0, Number(preferences[id]) || 0), 0);
-  const limit = total < 4 ? styles.length : total < 8 ? Math.min(5, styles.length) : total < 14 ? Math.min(4, styles.length) : Math.min(3, styles.length);
-  if (limit >= styles.length) return styles;
-  return styles.map((id, index) => ({ id, index, count: Math.max(0, Number(preferences[id]) || 0) }))
-    .sort((left, right) => right.count - left.count || left.index - right.index)
+  const customIds = customDefinitions(custom).map(style => style.id);
+  const available = [...styleIds, ...customIds];
+  const selected = new Set(styles);
+  const selectedOrder = new Map(styles.map((id, index) => [id, index]));
+  const total = available.reduce((sum, id) => sum + Math.max(0, Number(preferences[id]) || 0), 0);
+  const explorationLimit = Math.min(6, styles.length + 2, available.length);
+  const limit = total < 4 ? explorationLimit : total < 8 ? Math.min(5, explorationLimit) : total < 14 ? Math.min(4, explorationLimit) : Math.min(3, explorationLimit);
+  if (limit >= available.length && styles.length === available.length) return styles;
+  return available.map((id, index) => ({ id, index, count: Math.max(0, Number(preferences[id]) || 0), selected: selected.has(id) }))
+    .sort((left, right) => right.count - left.count || Number(right.selected) - Number(left.selected) ||
+      (left.selected ? selectedOrder.get(left.id) : left.index) - (right.selected ? selectedOrder.get(right.id) : right.index))
     .slice(0, limit).map(({ id }) => id);
 }
 
