@@ -16,6 +16,7 @@ export const defaultStyles = ['minimal', 'concise', 'conversational', 'vivid', '
 export const styleIds = Object.keys(styleLabels);
 
 export const styleLimits = { count: 16, name: 48, prompt: 800, sample: 1200 };
+export const maxGeneratedStyles = 4;
 
 export function customDefinitions(value) {
   if (!Array.isArray(value)) return [];
@@ -35,6 +36,15 @@ export function customDefinitions(value) {
 export function selectedStyles(value, custom) {
   const valid = Array.isArray(value) ? [...styleIds, ...customDefinitions(custom).map(style => style.id)].filter(id => value.includes(id)) : [];
   return valid.length ? valid : [...defaultStyles];
+}
+
+export function generationStyles(value, limit = maxGeneratedStyles) {
+  const styles = Array.isArray(value) ? [...value] : [];
+  if (styles.length <= limit) return styles;
+  const pool = styles.map((id, index) => ({ id, index }));
+  const chosen = [];
+  while (chosen.length < limit) chosen.push(pool.splice(Math.floor(Math.random() * pool.length), 1)[0]);
+  return chosen.sort((left, right) => left.index - right.index).map(({ id }) => id);
 }
 
 export function adaptiveStyles(value, custom, enabled, preferences) {

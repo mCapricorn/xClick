@@ -27,7 +27,7 @@ test('generates checked built-in and custom styles together from a saved configu
   assert.equal(replies[1].reference, '第二片叶子很有希望。');
 });
 
-test('learns selected styles and sends one request for the adaptive set', async t => {
+test('learns selected styles and displays each reply before requesting the next one', async t => {
   assert.deepEqual(adaptiveStyles(['minimal', 'concise', 'conversational', 'vivid', 'enthusiastic', 'sincereFriendly'], [], true, {}),
     ['minimal', 'concise', 'conversational', 'vivid', 'enthusiastic', 'sincereFriendly']);
   assert.deepEqual(adaptiveStyles(['minimal', 'concise', 'conversational', 'vivid', 'enthusiastic', 'sincereFriendly'], [], true, { minimal: 4 }),
@@ -53,11 +53,9 @@ test('learns selected styles and sends one request for the adaptive set', async 
     const prompt = messages[0].content;
     const match = prompt.match(/keys ([^\.]+)\./);
     const style = match?.[1];
-    assert.equal(style, 'minimal, concise, conversational');
+    assert.equal(progress.length, calls - 1);
     assert.match(prompt, /include a separate reference field/i);
-    const output = { language: 'en', minimal: { text: 'minimal reply.', reference: 'minimal reference.' },
-      concise: { text: 'concise reply.', reference: 'concise reference.' },
-      conversational: { text: 'conversational reply.', reference: 'conversational reference.' } };
+    const output = { language: 'en', [style]: { text: `${style} reply.`, reference: `${style} reference.` } };
     return Response.json({ choices: [{ message: { content: JSON.stringify(output) } }] });
   });
   const result = await generateDrafts({ provider: 'openai', model: 'fixture', key: 'fixture',
@@ -66,7 +64,7 @@ test('learns selected styles and sends one request for the adaptive set', async 
     bilingual: true, nativeLanguage: 'zh-Hans' }, 'Post', [], [], undefined, {
     onReply: reply => { progress.push(reply.tone); }
   });
-  assert.equal(calls, 1);
+  assert.equal(calls, 3);
   assert.deepEqual(progress, ['minimal', 'concise', 'conversational']);
   assert.deepEqual([...progress].sort(), ['minimal', 'concise', 'conversational'].sort());
   assert.deepEqual(result.replies.map(reply => reply.tone), ['minimal', 'concise', 'conversational']);
