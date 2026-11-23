@@ -1,6 +1,6 @@
 import { supportsPostPhotos } from './vision.mjs';
 import { referenceLanguage, nativeLanguages } from './drafts.mjs';
-import { adaptiveStyles, styleLimits } from './styles.mjs';
+import { adaptiveStyles, generationStyles, styleLimits } from './styles.mjs';
 import { makeRequest, jsonRequest, readProviderJSON, readReplies, readProviderError, readProviderStreamText, streamingProviders, fetchProvider, requestError } from './providers.mjs';
 
 function sendRequest(request, options) {
@@ -106,23 +106,37 @@ async function generateBatch(config, post, comments, photos, postLanguage, style
 }
 
 async function generateProgressively(config, post, comments, photos, postLanguage, onReply, options) {
-  const styles = adaptiveStyles(config.styles, config.customStyles, config.adaptiveStyles, config.stylePreferences);
+  const styles = generationStyles(adaptiveStyles(config.styles, config.customStyles, config.adaptiveStyles, config.stylePreferences));
   options.onStatus?.('analyzing');
-  const partialTones = new Set();
-  const result = await generateBatch(config, post, comments, photos, postLanguage, styles,
-    async reply => { partialTones.add(reply.tone); await onReply(reply, true); }, options);
-  const completeTones = new Set(result.replies?.map(reply => reply.tone) || []);
-  for (const tone of partialTones) {
-    if (!completeTones.has(tone)) await onReply({ tone, remove: true }, false);
+  const replies = [];
+  let firstError;
+  let photoCount = 0;
+  let labelLanguage;
+  for (const style of styles) {
+    const partialTones = new Set();
+    const result = await generateBatch(config, post, comments, photos, postLanguage, [style],
+      async reply => { partialTones.add(reply.tone); await onReply(reply, true); }, options);
+    photoCount = Math.max(photoCount, result.photoCount || 0);
+    labelLanguage ||= result.labelLanguage;
+    const completeTones = new Set(result.replies?.map(reply => reply.tone) || []);
+    for (const tone of partialTones) {
+      if (!completeTones.has(tone)) await onReply({ tone, remove: true }, false);
+    }
+    if (result.error === 'cancelled') return replies.length ? { replies, photoCount, labelLanguage, partial: true } : result;
+    if (result.replies?.length) {
+      for (const reply of result.replies) {
+        replies.push(reply);
+        await onReply(reply, false);
+      }
+    } else if (!firstError && result.error) firstError = result;
   }
-  if (!result.replies?.length) return result;
-  for (const reply of result.replies) await onReply(reply, false);
-  return result;
+  if (!replies.length) return firstError || { error: 'format' };
+  return { replies, photoCount, labelLanguage, ...(firstError ? { partial: true } : {}) };
 }
 
 export async function generateDrafts(config, post, comments, photos, postLanguage, options = {}) {
   if (typeof options.onReply === 'function') {
     return generateProgressively(config, post, comments, photos, postLanguage, options.onReply, options);
   }
-  return generateBatch(config, post, comments, photos, postLanguage, config.styles, undefined, options);
+  return generateBatch(config, post, comments, photos, postLanguage, generationStyles(config.styles), undefined, options);
 }

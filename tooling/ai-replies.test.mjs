@@ -266,7 +266,7 @@ test('maps wrapped or unlabeled provider candidates by requested order', () => {
 });
 
 import { postPhotos } from '../ai/photos.mjs';
-import { selectedStyles, styleIds, defaultStyles, composerLabels, styleLanguages } from '../ai/styles.mjs';
+import { selectedStyles, generationStyles, styleIds, defaultStyles, composerLabels, styleLanguages } from '../ai/styles.mjs';
 import { referenceLanguage } from '../ai/drafts.mjs';
 test('uses six ordered defaults for legacy settings and filters stored style IDs', () => {
   assert.deepEqual(defaultStyles, Object.keys(entries));
@@ -275,6 +275,13 @@ test('uses six ordered defaults for legacy settings and filters stored style IDs
   for (const lang of styleLanguages) {
     for (const id of styleIds) assert.ok(composerLabels(lang)[id]);
   }
+});
+test('limits generated styles to four and randomly samples excess selections', t => {
+  t.mock.method(Math, 'random', () => 0);
+  assert.deepEqual(generationStyles(['minimal', 'concise']), ['minimal', 'concise']);
+  assert.deepEqual(generationStyles(['minimal', 'concise', 'conversational', 'vivid', 'enthusiastic']),
+    ['minimal', 'concise', 'conversational', 'vivid']);
+  assert.equal(generationStyles([...styleIds]).length, 4);
 });
 test('requests and parses only enabled styles, including optional bilingual styles', () => {
   const styles = ['dryHumor', 'enthusiastic'];

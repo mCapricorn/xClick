@@ -2,7 +2,7 @@
   "schema": 1,
   "source_repository": "mCapricorn/dev-collaboration-template",
   "source_branch": "main",
-  "policy_revision": 3,
+  "policy_revision": 5,
   "rule_paths": [
     "AGENTS.md",
     "CONTRIBUTING.md",
