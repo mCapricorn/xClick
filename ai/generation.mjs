@@ -22,20 +22,18 @@ export async function generateSample(config, language) {
 function partialReply(value, style) {
   const key = String(style).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   const fields = new RegExp('"' + key + '"\\s*:\\s*\\{[\\s\\S]*?"(?:text|reply|content)"\\s*:\\s*"((?:\\\\.|[^"\\\\])*)(?:"|$)');
-  let match;
-  while ((match = fields.exec(value))) {
+  const match = fields.exec(value);
+  if (!match || !match[1]) return null;
     const valueText = match[1].replace(/\\u[0-9a-fA-F]{0,3}$/, '').replace(/\\$/, '');
     let text;
     try { text = JSON.parse('"' + valueText + '"').trim(); }
     catch { text = valueText.replace(/\\n/g, '\n').replace(/\\r/g, '\r').replace(/\\t/g, '\t').replace(/\\"/g, '"').replace(/\\\\/g, '\\').trim(); }
-    if (!text) continue;
+    if (!text) return null;
     const referenceMatch = value.match(/"(?:reference|translation|native)"\s*:\s*"((?:\\.|[^"\\])*)"/);
     let reference;
     try { reference = referenceMatch ? JSON.parse('"' + referenceMatch[1] + '"').trim() : undefined; }
     catch { reference = undefined; }
     return { tone: style, text, ...(reference ? { reference } : {}) };
-  }
-  return null;
 }
 
 async function generateBatch(config, post, comments, photos, postLanguage, styles, onPartial, options = {}) {
