@@ -99,6 +99,11 @@ export function parseDrafts(value, native, styles, custom) {
     }
   };
   const addObject = object => {
+    const directText = object.text ?? object.reply ?? object.content;
+    if (selected.length === 1 && typeof directText === 'string') {
+      addCandidate(selected[0], object);
+      return;
+    }
     const unlabelled = [];
     for (const [key, item] of Object.entries(object)) {
       if (['language', 'replies', 'suggestions', 'candidates', 'data'].includes(key)) continue;
@@ -136,7 +141,8 @@ export function parseDrafts(value, native, styles, custom) {
     const draft = { tone, text };
     if (native && (language !== native || looksLikeDifferentLanguage(text, native))) {
       const reference = referenceText(item);
-      if (reference && reference.length <= 1000) draft.reference = reference;
+      if (reference && reference.length <= 4000) draft.reference = reference;
+      else if ((language && language !== native) || looksLikeDifferentLanguage(text, native)) draft.referenceMissing = true;
     }
     seen.add(text);
     drafts.push(draft);

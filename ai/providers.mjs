@@ -17,7 +17,8 @@ export const streamingProviders = new Set(['openai', 'deepseek', 'qwen', 'glm', 
 function replyTokenLimit(config) {
   const count = Array.isArray(config.styles) ? config.styles.length : 1;
   const bilingual = referenceLanguage(config) ? 1 : 0;
-  return Math.min(1024, Math.max(320, count * (bilingual ? 160 : 96)));
+  return bilingual ? Math.min(4096, Math.max(1024, count * 1024))
+    : Math.min(1024, Math.max(320, count * 96));
 }
 
 // The base includes the version or relay prefix. Operation paths are appended to it.

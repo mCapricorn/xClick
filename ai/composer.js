@@ -363,7 +363,7 @@
       if (existing) {
         existing.currentText = reply.text;
         existing.wording.textContent = reply.text;
-        existing.setReference(reply.reference, replyLanguage);
+        existing.setReference(reply.reference, replyLanguage, reply.referenceMissing);
         return;
       }
       if (shownTones.has(reply.tone)) return;
@@ -382,13 +382,13 @@
       wording.textContent = text;
       choice.append(tone, wording);
       let note;
-      const setReference = (value, language) => {
-        if (!value) return;
+      const setReference = (value, language, missing = false) => {
+        if (!value && !missing) { note?.remove(); note = undefined; return; }
         if (!note) { note = document.createElement('small'); choice.append(note); }
-        note.textContent = value;
+        note.textContent = value || t('Native-language reference unavailable. Try generating again.', '母语参考未返回或超出长度限制，可重新生成。');
         if (language) note.lang = language;
       };
-      setReference(reference, labelLanguage);
+      setReference(reference, labelLanguage, reply.referenceMissing);
       const entry = { row: null, wording, choice, currentText: text, setReference };
       const row = document.createElement('div');
       row.className = 'draft-row';

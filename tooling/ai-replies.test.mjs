@@ -56,7 +56,7 @@ test('HTTP relay on a custom port serves model discovery and reply generation', 
 test('allocates more output space for adaptive bilingual batches', () => {
   const { body } = makeRequest({ provider: 'openai', model: 'fixture', key: 'fixture',
     styles: ['minimal', 'concise', 'vivid', 'askGrok'], bilingual: true, nativeLanguage: 'zh-Hans' }, 'Post');
-  assert.equal(body.max_tokens, 640);
+  assert.equal(body.max_tokens, 4096);
 });
 
 test('invalid relay URLs cannot be used for authenticated requests', () => {
@@ -65,6 +65,31 @@ test('invalid relay URLs cannot be used for authenticated requests', () => {
     assert.throws(() => apiBase('openai', value));
   }
   assert.equal(apiBase('openai', ' '), 'https://api.openai.com/v1');
+});
+test('reserves single-style bilingual output space across all providers', () => {
+  for (const provider of Object.keys(providers)) {
+    const config = { provider, model: 'fixture', styles: ['conversational'] };
+    const limit = body => body.max_tokens ?? body.max_output_tokens ?? body.generationConfig?.maxOutputTokens;
+    assert.equal(limit(makeRequest(config, 'Post').body), 320);
+    assert.equal(limit(makeRequest({ ...config, bilingual: true, nativeLanguage: 'zh-Hans' }, 'Post').body), 1024);
+  }
+});
+test('preserves direct and wrapped single-style references including longer translations', () => {
+  const read = (value, native = 'zh-Hans') => readReplies('openai',
+    { choices: [{ message: { content: JSON.stringify(value) } }] }, native, ['conversational']);
+  const text = 'A longer reply about finding a small bug.';
+  const reference = '排查问题需要耐心。'.repeat(120);
+  for (const key of ['reference', 'translation', 'nativeText']) {
+    const item = { text, [key]: reference };
+    for (const value of [item, { data: item }, { replies: item }, { conversational: item }]) {
+      assert.deepEqual(read(value), [{ tone: 'conversational', text, reference }]);
+      assert.deepEqual(read(value, null), [{ tone: 'conversational', text }]);
+    }
+  }
+  assert.deepEqual(read({ text }), [{ tone: 'conversational', text, referenceMissing: true }]);
+  assert.deepEqual(read({ text, reference: '中'.repeat(4001) }), [{ tone: 'conversational', text, referenceMissing: true }]);
+  assert.deepEqual(read({ language: 'zh-Hans', text: '排查需要时间。' }),
+    [{ tone: 'conversational', text: '排查需要时间。' }]);
 });
 
 test('Ark lists text models using only the API key value', async t => {
@@ -216,7 +241,7 @@ test('keeps translation separate, strips unrequested references and preserves to
   assert.deepEqual(parse({ language: 'zh-Hans', ...translated }, 'zh-Hans'), drafts);
   assert.deepEqual(parse(translated), drafts);
   assert.deepEqual(parse({ ...translated, language: 'zh-Hans' }, 'en'), drafts.map(draft => ({ ...draft, reference: 'Reference ' + draft.tone })));
-  assert.deepEqual(parse({ ...entries, language: 'zh-Hans' }, 'en'), drafts);
+  assert.deepEqual(parse({ ...entries, language: 'zh-Hans' }, 'en'), drafts.map(draft => ({ ...draft, referenceMissing: true })));
   assert.throws(() => parse({}), /format/);
   assert.deepEqual(parse({ ...entries, minimal: null }), drafts.slice(1));
   assert.deepEqual(parse({ ...entries, vivid: entries.minimal }), drafts.filter(draft => draft.tone !== 'vivid'));
@@ -246,7 +271,7 @@ test('accepts omitted language and common language tags when references are enab
     { tone: 'minimal', text: '简短回复' }, { tone: 'concise', text: '具体的一句话' }
   ]);
   assert.deepEqual(parse({ language: 'English', replies: [{ style: '极简', reply: 'A short reply.' }] }, 'zh-Hans'), [
-    { tone: 'minimal', text: 'A short reply.' }
+    { tone: 'minimal', text: 'A short reply.', referenceMissing: true }
   ]);
   assert.deepEqual(parse({ minimal: { text: 'A short reply.', reference: '简短回复。' } }, 'zh-Hans'), [
     { tone: 'minimal', text: 'A short reply.', reference: '简短回复。' }
@@ -295,7 +320,7 @@ test('requests and parses only enabled styles, including optional bilingual styl
   assert.deepEqual(read(), [{ tone: 'enthusiastic', ...output.enthusiastic }]);
   output.dryHumor = { ...output.enthusiastic };
   delete output.enthusiastic.reference;
-  assert.deepEqual(read(), [{ tone: 'enthusiastic', text: 'A chatty reply.' }]);
+  assert.deepEqual(read(), [{ tone: 'enthusiastic', text: 'A chatty reply.', referenceMissing: true }]);
 });
 test('Ask Grok is opt-in and keeps the mention in the comment and the translation in its own field', () => {
   const prompt = styles => makeRequest({ provider: 'openai', styles }, 'Why is the moon orange?').body.messages[0].content;
