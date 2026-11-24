@@ -71,6 +71,15 @@ test('learns selected styles and displays each reply before requesting the next 
   assert.deepEqual(result.replies.map(reply => reply.reference), ['minimal reference.', 'concise reference.', 'conversational reference.']);
 });
 
+test('keeps provider results when a progress listener disconnects', async t => {
+  t.mock.method(globalThis, 'fetch', async () => Response.json({
+    choices: [{ message: { content: JSON.stringify({ minimal: { text: '仍可显示的回复。' } }) } }]
+  }));
+  const result = await generateDrafts({ provider: 'openai', model: 'fixture', key: 'fixture', styles: ['minimal'] },
+    'Post', [], [], undefined, { onReply() { throw new Error('content script closed'); } });
+  assert.deepEqual(result.replies, [{ tone: 'minimal', text: '仍可显示的回复。' }]);
+});
+
 test('streams the first single-style reply before the full JSON response closes', async t => {
   const progress = [];
   t.mock.method(globalThis, 'fetch', async (_, options) => {
