@@ -259,6 +259,6 @@ export function readProviderJSON(provider, data) {
 }
 
 
-export function readReplies(provider, data, native = null, styles, custom) {
-  return parseDrafts(readProviderJSON(provider, data), native, styles, custom);
+export function readReplies(provider, data, native = null, styles, custom, postLanguage) {
+  return parseDrafts(readProviderJSON(provider, data), native, styles, custom, postLanguage);
 }
