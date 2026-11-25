@@ -127,6 +127,36 @@ test('parses Doubao SSE fragments through the same streaming path', async t => {
   assert.deepEqual(result.replies, [{ tone: 'minimal', text: '豆包回复。' }]);
 });
 
+test('delivers original text before a delayed native reference and retains the final translation', async t => {
+  let controller;
+  const encoder = new TextEncoder();
+  const emit = content => controller.enqueue(encoder.encode('data: ' +
+    JSON.stringify({ choices: [{ delta: { content } }] }) + '\n\n'));
+  let sentReference = false;
+  t.mock.method(globalThis, 'fetch', async () => new Response(new ReadableStream({
+    start(value) {
+      controller = value;
+      emit('{"language":"en","conversational":{"text":"Finding bugs takes patience."');
+    }
+  }), { headers: { 'content-type': 'text/event-stream' } }));
+  const progress = [];
+  const result = await generateDrafts({ provider: 'openai', model: 'fixture', key: 'fixture',
+    styles: ['conversational'], bilingual: true, nativeLanguage: 'zh-Hans' }, 'Post', [], [], 'en', {
+    onReply(reply, partial) {
+      progress.push({ reply, partial });
+      if (!sentReference) {
+        assert.equal(reply.reference, undefined);
+        sentReference = true;
+        emit(',"reference":"排查问题需要耐心。"}}');
+        controller.close();
+      }
+    }
+  });
+  assert.equal(progress[0].partial, true);
+  assert.equal(progress.at(-1).partial, false);
+  assert.equal(result.replies[0].reference, '排查问题需要耐心。');
+});
+
 for (const provider of ['deepseek', 'qwen', 'glm', 'kimi']) {
   test(`parses ${provider} OpenAI-compatible SSE fragments`, async t => {
     t.mock.method(globalThis, 'fetch', async (_, options) => {
