@@ -12,6 +12,8 @@ const guidance = {
   enthusiastic: 'Sound like a warm, talkative friend. Spend two or three short sentences on one detail that caught your attention and what makes it interesting. Match the mood of the post, without piling on praise or exclamation marks.',
   sincereFriendly: 'Respond to one specific thing the author shared with genuine interest. Use a warm, plainspoken sentence or two, as you would with someone you just met.',
   curious: 'Ask one genuine follow-up about a specific detail the post leaves open.',
+  addPerspective: 'Build on a specific point with one useful implication or overlooked angle grounded in the post.',
+  softPushback: 'Respectfully question one assumption or offer a plausible counterexample. Avoid inventing facts or forcing a disagreement.',
   dryHumor: 'Use an understated, deadpan observation when appropriate. Keep it kind.',
   askGrok: 'Address @grok directly. Ask one short, natural question about a specific detail in the post that Grok could explain, check or play along with. Write only the commenter’s question.',
   supportive: 'Acknowledge a specific effort or difficulty with a warm and grounded remark.',
@@ -67,8 +69,8 @@ export function replyInstructions(native, styles, postLanguage, custom) {
   ].join(' ').trim();
 }
 
-export function parseDrafts(value, native, styles, custom) {
-  const language = normalizedLanguage(value?.language);
+export function parseDrafts(value, native, styles, custom, postLanguage) {
+  const language = normalizedLanguage(value?.language) || normalizedLanguage(postLanguage);
   if (native && language && !['en', 'zh-Hans', 'zh-Hant'].includes(language)) throw new Error('format');
   const selected = selectedStyles(styles, custom);
   const aliases = new Map();
@@ -142,7 +144,7 @@ export function parseDrafts(value, native, styles, custom) {
     if (native && (language !== native || looksLikeDifferentLanguage(text, native))) {
       const reference = referenceText(item);
       if (reference && reference.length <= 4000) draft.reference = reference;
-      else if ((language && language !== native) || looksLikeDifferentLanguage(text, native)) draft.referenceMissing = true;
+      else if ((language && language !== native) || !['en', 'zh-Hans', 'zh-Hant'].includes(native) || looksLikeDifferentLanguage(text, native)) draft.referenceMissing = true;
     }
     seen.add(text);
     drafts.push(draft);

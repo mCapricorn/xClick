@@ -8,6 +8,8 @@ export const styleLabels = {
   enthusiastic: ['Chatty & enthusiastic', '热情健谈', '熱情健談', 'Begeistert und gesprächig', 'Entusiasta e loquace', '熱のこもったおしゃべり', '열정적인 수다', 'Bavard et enthousiaste'],
   sincereFriendly: ['Sincere & friendly', '真诚友好', '真誠友好', 'Aufrichtig und freundlich', 'Sincero e amichevole', '誠実で親しみやすい', '진솔하고 다정하게', 'Sincère et amical'],
   curious: ['Curious', '好奇追问', '好奇追問', 'Neugierig', 'Curioso', '好奇心たっぷり', '궁금해서 묻기', 'Curieux'],
+  addPerspective: ['Add perspective', '补充观点', '補充觀點', 'Perspektive ergänzen', 'Aggiungi una prospettiva', '視点を加える', '관점 더하기', 'Ajouter un point de vue'],
+  softPushback: ['Gentle disagreement', '温和反驳', '溫和反駁', 'Sanfter Widerspruch', 'Dissenso garbato', 'やんわり反論', '부드럽게 반론하기', 'Désaccord nuancé'],
   dryHumor: ['Dry humor', '冷幽默', '冷幽默', 'Trockener Humor', 'Umorismo secco', '淡々としたユーモア', '담담한 유머', 'Humour pince-sans-rire'],
   supportive: ['Supportive', '暖心鼓励', '暖心鼓勵', 'Ermutigend', 'Incoraggiante', '温かい応援', '따뜻한 응원', 'Encourageant'],
   askGrok: ['Ask Grok', '与 Grok 互动', '與 Grok 互動', 'Grok fragen', 'Chiedi a Grok', 'Grok に聞く', 'Grok에게 묻기', 'Demander à Grok'],
@@ -49,19 +51,17 @@ export function generationStyles(value, limit = maxGeneratedStyles) {
 
 export function adaptiveStyles(value, custom, enabled, preferences) {
   const styles = selectedStyles(value, custom);
-  if (enabled !== true || !preferences || typeof preferences !== 'object') return styles;
-  const customIds = customDefinitions(custom).map(style => style.id);
-  const available = [...styleIds, ...customIds];
-  const selected = new Set(styles);
-  const selectedOrder = new Map(styles.map((id, index) => [id, index]));
-  const total = available.reduce((sum, id) => sum + Math.max(0, Number(preferences[id]) || 0), 0);
-  const explorationLimit = Math.min(6, styles.length + 2, available.length);
-  const limit = total < 4 ? explorationLimit : total < 8 ? Math.min(5, explorationLimit) : total < 14 ? Math.min(4, explorationLimit) : Math.min(3, explorationLimit);
-  if (limit >= available.length && styles.length === available.length) return styles;
-  return available.map((id, index) => ({ id, index, count: Math.max(0, Number(preferences[id]) || 0), selected: selected.has(id) }))
-    .sort((left, right) => right.count - left.count || Number(right.selected) - Number(left.selected) ||
-      (left.selected ? selectedOrder.get(left.id) : left.index) - (right.selected ? selectedOrder.get(right.id) : right.index))
-    .slice(0, limit).map(({ id }) => id);
+  if (enabled !== true || styles.length >= maxGeneratedStyles) return styles;
+  const other = [...styleIds, ...customDefinitions(custom).map(style => style.id)].filter(id => !styles.includes(id));
+  const slots = Math.min(2, maxGeneratedStyles - styles.length, other.length);
+  const exploration = [];
+  // Keep one slot open to any unchecked style even after learning a preference.
+  if (slots > 1) {
+    const favorite = other.reduce((best, id) =>
+      (preferences?.[id] || 0) > (preferences?.[best] || 0) ? id : best, null);
+    if (favorite) exploration.push(other.splice(other.indexOf(favorite), 1)[0]);
+  }
+  return [...styles, ...exploration, ...generationStyles(other, slots - exploration.length)];
 }
 
 export function composerLabels(language, custom) {

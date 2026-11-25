@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { adaptiveStyles, composerLabels, customDefinitions } from '../ai/styles.mjs';
-import { generateDrafts } from '../ai/generation.mjs';
+import { generateDrafts, translateDraft } from '../ai/generation.mjs';
 
 const style = { id: 'custom-garden', name: 'Garden notes', prompt: 'Focus on one leaf.' };
 
@@ -28,22 +28,12 @@ test('generates checked built-in and custom styles together from a saved configu
 });
 
 test('learns selected styles and displays each reply before requesting the next one', async t => {
-  assert.deepEqual(adaptiveStyles(['minimal', 'concise', 'conversational', 'vivid', 'enthusiastic', 'sincereFriendly'], [], true, {}),
-    ['minimal', 'concise', 'conversational', 'vivid', 'enthusiastic', 'sincereFriendly']);
-  assert.deepEqual(adaptiveStyles(['minimal', 'concise', 'conversational', 'vivid', 'enthusiastic', 'sincereFriendly'], [], true, { minimal: 4 }),
-    ['minimal', 'concise', 'conversational', 'vivid', 'enthusiastic']);
-  assert.deepEqual(adaptiveStyles(['minimal', 'concise', 'conversational', 'vivid', 'enthusiastic', 'sincereFriendly'], [], true,
-    { minimal: 5, concise: 2, conversational: 1 }), ['minimal', 'concise', 'conversational', 'vivid']);
-  assert.deepEqual(adaptiveStyles(['minimal', 'concise', 'conversational', 'vivid', 'enthusiastic', 'sincereFriendly'], [], true,
-    { minimal: 8, concise: 4, conversational: 2 }), ['minimal', 'concise', 'conversational']);
-  assert.deepEqual(adaptiveStyles(['minimal', 'concise', 'conversational'], [], false, { minimal: 20 }),
-    ['minimal', 'concise', 'conversational']);
-  assert.deepEqual(adaptiveStyles(['minimal', 'concise'], [], true, {}),
-    ['minimal', 'concise', 'conversational', 'vivid']);
-  assert.deepEqual(adaptiveStyles(['minimal', 'concise'], [], true, { vivid: 5 }),
-    ['vivid', 'minimal', 'concise', 'conversational']);
-  assert.deepEqual(adaptiveStyles(['minimal', 'concise'], [{ id: 'custom-garden', name: 'Garden notes', prompt: 'Focus on one leaf.' }], true, {}),
-    ['minimal', 'concise', 'conversational', 'vivid']);
+  const checked = ['minimal', 'concise', 'conversational', 'vivid', 'enthusiastic', 'sincereFriendly'];
+  assert.deepEqual(adaptiveStyles(checked, [], true, { minimal: 20 }), checked);
+  assert.deepEqual(adaptiveStyles(['minimal'], [], false, {}), ['minimal']);
+  const explore = adaptiveStyles(['minimal', 'askGrok'], [style], true, { [style.id]: 5 });
+  assert.deepEqual(explore.slice(0, 3), ['minimal', 'askGrok', style.id]);
+  assert.equal(new Set(explore).size, 4);
 
   let calls = 0;
   const progress = [];
@@ -64,11 +54,11 @@ test('learns selected styles and displays each reply before requesting the next 
     bilingual: true, nativeLanguage: 'zh-Hans' }, 'Post', [], [], undefined, {
     onReply: reply => { progress.push(reply.tone); }
   });
-  assert.equal(calls, 3);
-  assert.deepEqual(progress, ['minimal', 'concise', 'conversational']);
-  assert.deepEqual([...progress].sort(), ['minimal', 'concise', 'conversational'].sort());
-  assert.deepEqual(result.replies.map(reply => reply.tone), ['minimal', 'concise', 'conversational']);
-  assert.deepEqual(result.replies.map(reply => reply.reference), ['minimal reference.', 'concise reference.', 'conversational reference.']);
+  assert.equal(calls, 4);
+  assert.equal(new Set(progress).size, 4);
+  assert.ok(progress.every(tone => checked.includes(tone)));
+  assert.deepEqual(result.replies.map(reply => reply.tone), progress);
+  assert.deepEqual(result.replies.map(reply => reply.reference), progress.map(tone => tone + ' reference.'));
 });
 
 test('keeps provider results when a progress listener disconnects', async t => {
@@ -220,6 +210,35 @@ test('classifies cancellation without retrying and retries timeout without strea
   controller.abort(new DOMException('cancelled', 'AbortError'));
   assert.deepEqual(await cancelled, { error: 'cancelled' });
   assert.deepEqual(await generateDrafts({ provider: 'openai', model: 'fixture', key: 'fixture', styles: ['minimal'] },
-    'Post', [], [], undefined, { onReply() {}, timeout: 5 }), { error: 'timeout' });
+    'Post', [], [], undefined, { onReply() {}, timeout: 5 }), { error: 'timeout', failures: [{ tone: 'minimal', error: 'timeout' }] });
   assert.equal(requests, 3);
+});
+
+
+test('preserves completed cards and identifies the failed style for retry', async t => {
+  t.mock.method(globalThis, 'fetch', async (_, options) => {
+    const prompt = JSON.parse(options.body).messages[0].content;
+    if (prompt.includes('keys curious.')) return new Response(null, { status: 429 });
+    return Response.json({ choices: [{ message: { content: '{"minimal":{"text":"Fresh basil."}}' } }] });
+  });
+  const events = [];
+  const result = await generateDrafts({ provider: 'openai', model: 'fixture', key: 'fixture', styles: ['minimal', 'curious'] },
+    'Post', [], [], 'en', { onReply: reply => events.push(reply) });
+  assert.deepEqual(result.failures, [{ tone: 'curious', error: 'quota', status: 429 }]);
+  assert.deepEqual(events, [...result.replies, ...result.failures]);
+});
+
+test('translates only the selected original into its configured reference language', async t => {
+  const config = { provider: 'openai', model: 'fixture', key: 'fixture', bilingual: true, nativeLanguage: 'zh-Hans' };
+  let calls = 0;
+  t.mock.method(globalThis, 'fetch', async (_, options) => {
+    calls++;
+    const { messages } = JSON.parse(options.body);
+    assert.deepEqual(JSON.parse(messages[1].content), { text: 'Fresh basil.' });
+    assert.match(messages[0].content, /简体中文/);
+    return Response.json({ choices: [{ message: { content: '{"reference":"新鲜罗勒。"}' } }] });
+  });
+  assert.deepEqual(await translateDraft(config, 'Fresh basil.', 'zh-Hans'), { reference: '新鲜罗勒。' });
+  assert.deepEqual(await translateDraft(config, 'Fresh basil.', 'fr'), { error: 'context' });
+  assert.equal(calls, 1);
 });

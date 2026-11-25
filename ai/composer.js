@@ -78,7 +78,7 @@
     // Opening the reply dialog can change the route or hide the underlying thread.
     const comments = editor && inlineArticle(column, editor, id) === article
       ? threadComments(column, editor, article, post) : [];
-    pendingReply = { post, postLanguage: postLanguage(body), images: photosIn(article), comments, expires: Date.now() + 3000 };
+    pendingReply = { author: authorHandle(article), post, postLanguage: postLanguage(body), images: photosIn(article), comments, expires: Date.now() + 3000 };
   }, true);
   document.addEventListener('keydown', event => {
     if (event.key === 'Escape') pendingReply = undefined;
@@ -104,7 +104,7 @@
     const post = postText(parent) || origin?.post || '';
     const images = photosIn(parent?.closest(articleSelector) || dialog, editor);
     const sameOrigin = origin && origin.post === post;
-    return { post, postLanguage: postLanguage(parent) || (sameOrigin ? origin.postLanguage : undefined),
+    return { author: authorHandle(parent?.closest(articleSelector)) || (sameOrigin ? origin.author : ''), post, postLanguage: postLanguage(parent) || (sameOrigin ? origin.postLanguage : undefined),
       images: !images.length && sameOrigin ? origin.images : images };
   }
 
@@ -115,6 +115,11 @@
   function belongsToArticle(node, article) {
     const card = node.closest('[role="link"]');
     return node.closest(articleSelector) === article && !(card && card !== article && article.contains(card));
+  }
+
+  function authorHandle(article) {
+    const user = [...article?.querySelectorAll('[data-testid="User-Name"]') || []].find(node => belongsToArticle(node, article));
+    return user?.innerText.match(/(?:^|\s)(@[A-Za-z0-9_]{1,15})\b/)?.[1] || '';
   }
 
   function articleBody(article) {
@@ -300,6 +305,7 @@
       .draft { box-sizing:border-box; display:grid; gap:3px; width:100%; margin:0; padding:10px 8px;
         text-align:start; font:inherit; color:inherit; border:0; background:transparent; cursor:pointer;
         white-space:pre-wrap; overflow-wrap:anywhere; }
+      .draft:disabled { cursor:progress; }
       .draft-row + .draft-row { border-block-start:1px solid var(--rule); }
       .draft:hover,.draft:focus-visible { background:color-mix(in srgb,var(--xc-draft-primary,#00f6ff) 7%,transparent); }
       .draft:focus-visible { outline:2px solid var(--highlight); outline-offset:-2px; }
@@ -319,7 +325,9 @@
       @keyframes draft-scan { to { background-position:100% 0; color:var(--draft-ink); } }
       @keyframes draft-appear { from { opacity:.5; transform:translateY(3px); } }
     `;
-    feedback.append(panelStyle, status, results);
+    const target = document.createElement('small');
+    target.hidden = true;
+    feedback.append(panelStyle, target, status, results);
     generate.className = 'generate';
     settings.className = 'settings';
     const ink = getComputedStyle(editor).color;
@@ -329,15 +337,26 @@
     placement.group.insertBefore(host, placement.before);
     placement.row.after(panel);
     let cancelGeneration = () => {};
-    mounted.set(editor, { host, panel, postId, container, cancel: () => cancelGeneration() });
+    const cardRequests = new Set();
+    function cancelCardRequests() {
+      for (const requestId of cardRequests) chrome.runtime.sendMessage({ type: 'xc-ai-cancel', requestId }).catch(() => {});
+      cardRequests.clear();
+    }
+    async function requestCard(message) {
+      const requestId = crypto.randomUUID();
+      cardRequests.add(requestId);
+      try { return await chrome.runtime.sendMessage({ ...message, requestId }); }
+      catch { return { error: 'network' }; }
+      finally { cardRequests.delete(requestId); }
+    }
+    mounted.set(editor, { host, panel, postId, container, cancel() { cancelGeneration(); cancelCardRequests(); } });
     const current = snapshot => host.isConnected && container.contains(editor) &&
       (!postId || detailId() === postId) && JSON.stringify(context()) === JSON.stringify(snapshot);
     let labels = {};
-    let labelLanguage;
     let mediaKinds = [];
     let mediaBarShown = false;
     let activeRequestId;
-    const shownTones = new Set();
+    let generationMessage;
     const draftRows = new Map();
     function addMediaSetup() {
       if (mediaBarShown || mediaKinds.includes('image')) return;
@@ -351,70 +370,135 @@
       bar.append(setup, hint);
       results.prepend(bar);
     }
-    function appendReply(reply, replyLabels, replyMediaKinds, replyLanguage, snapshot, partial = false, remove = false) {
-      if (!reply?.tone) return;
-      if (remove) {
-        draftRows.get(reply.tone)?.row.remove();
-        draftRows.delete(reply.tone);
-        shownTones.delete(reply.tone);
-        return;
-      }
-      const existing = draftRows.get(reply.tone);
-      if (existing) {
-        existing.currentText = reply.text;
-        existing.wording.textContent = reply.text;
-        existing.setReference(reply.reference, replyLanguage, reply.referenceMissing);
-        return;
-      }
-      if (shownTones.has(reply.tone)) return;
-      shownTones.add(reply.tone);
-      labels = replyLabels || labels;
-      labelLanguage = replyLanguage || labelLanguage;
-      mediaKinds = replyMediaKinds || mediaKinds;
-      addMediaSetup();
-      const { tone: style, text, reference } = reply;
-      const choice = button('');
-      choice.className = 'draft';
-      const tone = document.createElement('strong');
-      tone.textContent = labels[style] || style;
-      const wording = document.createElement('span');
-      wording.className = 'text';
-      wording.textContent = text;
-      choice.append(tone, wording);
-      let note;
-      const setReference = (value, language, missing = false) => {
-        if (!value && !missing) { note?.remove(); note = undefined; return; }
-        if (!note) { note = document.createElement('small'); choice.append(note); }
-        note.textContent = value || t('Native-language reference unavailable. Try generating again.', '母语参考未返回或超出长度限制，可重新生成。');
-        if (language) note.lang = language;
-      };
-      setReference(reference, labelLanguage, reply.referenceMissing);
-      const entry = { row: null, wording, choice, currentText: text, setReference };
+    function showFailure(failure, snapshot) {
+      const { tone } = failure;
+      const existing = draftRows.get(tone);
+      if (existing?.failed || existing?.ready) return;
+      existing?.row.remove();
       const row = document.createElement('div');
-      row.className = 'draft-row';
-      row.append(choice);
-      entry.row = row;
-      draftRows.set(style, entry);
-      choice.onclick = async e => {
-        if (!e.isTrusted || applying || !current(snapshot)) return;
+      row.className = 'draft-row media-actions';
+      const name = document.createElement('strong');
+      name.textContent = labels[tone] || tone;
+      const detail = document.createElement('small');
+      detail.textContent = errors[failure.error] || errors.network;
+      const retry = button(t('Retry this style', '重试此风格'));
+      row.append(name, detail, retry);
+      results.append(row);
+      draftRows.set(tone, { row, failed: true });
+      const message = { ...generationMessage, type: 'xc-ai-retry-style', style: tone };
+      retry.onclick = async event => {
+        if (!event.isTrusted || retry.disabled || !current(snapshot)) return;
+        retry.disabled = true;
+        detail.textContent = t('Generating…', '正在生成…');
+        const result = await requestCard(message);
+        if (!row.isConnected || !current(snapshot)) return;
+        retry.disabled = false;
+        const reply = result?.replies?.find(item => item.tone === tone);
+        if (!reply) { detail.textContent = errors[result?.error] || errors.network; return; }
+        row.remove();
+        draftRows.delete(tone);
+        appendReply(reply, result.labels, result.mediaKinds, result.labelLanguage, snapshot);
+        status.textContent = t('Choose a reply', '选择回复');
+      };
+    }
+
+    function appendReply(reply, replyLabels, replyMediaKinds, language, snapshot, partial = false) {
+      if (!reply?.tone) return;
+      if (reply.error) {
+        labels = replyLabels || labels;
+        showFailure(reply, snapshot);
+        return;
+      }
+      const style = reply.tone;
+      let entry = draftRows.get(style);
+      if (reply.remove) {
+        entry?.row.remove();
+        draftRows.delete(style);
+        return;
+      }
+      if (entry?.ready) return;
+      labels = replyLabels || labels;
+      mediaKinds = replyMediaKinds || mediaKinds;
+      if (!entry) {
+        addMediaSetup();
+        const row = document.createElement('div');
+        row.className = 'draft-row';
+        const choice = button('');
+        choice.className = 'draft';
+        const tone = document.createElement('strong');
+        tone.textContent = labels[style] || style;
+        const wording = document.createElement('span');
+        wording.className = 'text';
+        const note = document.createElement('small');
+        choice.append(tone, wording, note);
+        row.append(choice);
+        results.append(row);
+        entry = { row, choice, wording, note, ready: false };
+        draftRows.set(style, entry);
+      }
+      const { row, choice, wording, note } = entry;
+      const { text, reference } = reply;
+      wording.textContent = text;
+      note.textContent = reference || (partial && language && language !== snapshot.postLanguage
+        ? t('Waiting for translation…', '等待译文…') : '');
+      note.hidden = !note.textContent;
+      if (reference && language) note.lang = language;
+      choice.disabled = partial;
+      if (partial) return;
+      entry.ready = true;
+      const actions = document.createElement('div');
+      actions.className = 'media-actions';
+      const fill = button(t('Fill', '填入'));
+      const copy = button(t('Copy', '复制'));
+      actions.append(fill, copy);
+      row.append(actions);
+      choice.onclick = fill.onclick = async event => {
+        if (!event.isTrusted || applying || !current(snapshot)) return;
         applying = true;
         try {
-          if (!await appendDraft(editor, entry.currentText)) {
-            status.textContent = t('Select and copy the draft into your reply.', '请选择并复制候选内容到回复框。');
+          if (!await appendDraft(editor, text)) {
+            status.textContent = t('Use Copy to paste this draft into your reply.', '请点击复制，再粘贴到回复框。');
             return;
           }
-          choice.remove();
           chrome.runtime.sendMessage({ type: 'xc-ai-style-selected', style }).catch(() => {});
-          for (const sibling of [...results.children]) {
-            if (sibling !== row && sibling.classList.contains('draft-row')) sibling.remove();
-          }
-          status.setAttribute('data-added', '');
-          status.textContent = t('Added to your draft.', '已追加到回复草稿。');
+          fill.textContent = t('Added', '已填入');
           globalThis.xClickDraftSound?.('draftInsert');
         } finally { applying = false; }
       };
-      results.append(row);
+      copy.onclick = async event => {
+        if (!event.isTrusted || !current(snapshot)) return;
+        try {
+          await navigator.clipboard.writeText(text);
+          copy.textContent = t('Copied', '已复制');
+        } catch { status.textContent = t('Clipboard unavailable. Select the draft text to copy it.', '无法访问剪贴板，请选中正文复制。'); }
+      };
+      if (reply.referenceMissing && language) {
+        const translate = button(t('Retry translation', '重试翻译'));
+        note.hidden = false;
+        note.textContent = t('Translation unavailable.', '暂无译文。');
+        actions.append(translate);
+        translate.onclick = async event => {
+          if (!event.isTrusted || translate.disabled || !current(snapshot)) return;
+          translate.disabled = true;
+          note.textContent = t('Translating…', '正在翻译…');
+          const result = await requestCard({ type: 'xc-ai-translate', text, language });
+          if (!row.isConnected || !current(snapshot)) return;
+          translate.disabled = false;
+          note.textContent = result?.reference || errors[result?.error] || errors.network;
+          if (result?.reference) { note.lang = language; translate.remove(); }
+        };
+      }
       if (mediaKinds.length) globalThis.xClickMediaActions({ kinds:mediaKinds, parent:row, t, text, snapshot, current, scope:placement.scope, status, errors });
+    }
+
+    function hasReadyReply() {
+      return [...draftRows.values()].some(entry => entry.ready);
+    }
+
+    function discardUnfinishedRows() {
+      for (const [tone, entry] of draftRows) {
+        if (!entry.ready && !entry.failed) { entry.row.remove(); draftRows.delete(tone); }
+      }
     }
     settings.onclick = event => {
       if (event.isTrusted) chrome.runtime.sendMessage({ type: 'xc-ai-settings' });
@@ -436,13 +520,13 @@
       const snapshot = context();
       const { post, images } = snapshot;
       results.replaceChildren();
-      shownTones.clear();
+      cancelCardRequests();
       draftRows.clear();
       labels = {};
-      labelLanguage = undefined;
       mediaKinds = [];
       mediaBarShown = false;
-      status.removeAttribute('data-added');
+      target.textContent = [snapshot.author, post.replace(/\s+/g, ' ').slice(0, 100) || (images.length ? t('Photo post', '图片帖') : '')].filter(Boolean).join(' · ');
+      target.hidden = !target.textContent;
       if (!post && !images.length) { status.textContent = errors.context; return; }
       globalThis.xClickDraftSound?.('draftStart');
       status.dataset.loading = '';
@@ -456,12 +540,12 @@
         progressListeners.delete(requestId);
         chrome.runtime.sendMessage({ type: 'xc-ai-cancel', requestId }).catch(() => {});
         delete status.dataset.loading;
+        discardUnfinishedRows();
         status.textContent = errors.cancelled;
         updateGenerationLabel(false);
       };
       progressListeners.set(requestId, progress => {
         if (!current(snapshot)) { cancelGeneration(); return; }
-        if (status.hasAttribute('data-added')) return;
         if (progress.status) {
           status.textContent = {
             preparing: t('Preparing…', '正在准备…'),
@@ -471,39 +555,40 @@
             done: t('Choose a reply', '请选择回复。')
           }[progress.status] || status.textContent;
         }
-        appendReply(progress.reply, progress.labels, progress.mediaKinds, progress.labelLanguage, snapshot, progress.partial, progress.remove);
-        if (progress.reply) status.textContent = t('Receiving replies…', '正在接收回复…');
+        appendReply(progress.reply, progress.labels, progress.mediaKinds, progress.labelLanguage, snapshot, progress.partial);
+        if (progress.reply || progress.status === 'generating') {
+          status.textContent = hasReadyReply()
+            ? t('Replies ready · receiving more…', '已有回复可用 · 正在接收其余候选…')
+            : t('Receiving replies…', '正在接收回复…');
+        }
       });
       try {
         const comments = commentsFor?.(post) || [];
-        const response = await chrome.runtime.sendMessage({ type: 'xc-ai-generate', requestId, post, comments, images, postLanguage: snapshot.postLanguage, uiLanguage: t('en', 'zh-Hans') });
+        generationMessage = { post, comments, images, postLanguage: snapshot.postLanguage, uiLanguage: t('en', 'zh-Hans') };
+        const response = await chrome.runtime.sendMessage({ type: 'xc-ai-generate', requestId, ...generationMessage });
         if (activeRequestId !== requestId) return;
         activeRequestId = undefined;
         progressListeners.delete(requestId);
         if (!current(snapshot)) { status.textContent = ''; return; }
-        if (!response?.replies) {
-          status.textContent = shownTones.size
-            ? t('Some replies are ready. Try again for the remaining styles.', '部分回复已生成，可重新生成剩余风格。')
-            : (errors[response?.error] || errors.network) + (response?.status ? ' (' + response.status + ')' : '');
+        labels = response?.labels || labels;
+        mediaKinds = response?.mediaKinds || mediaKinds;
+        for (const reply of response?.replies || []) appendReply(reply, labels, mediaKinds, response.labelLanguage, snapshot);
+        discardUnfinishedRows();
+        for (const failure of response?.failures || []) showFailure(failure, snapshot);
+        if (!hasReadyReply()) {
+          status.textContent = errors[response?.error] || errors.network;
           return;
         }
-        labels = response.labels || labels;
-        labelLanguage = response.labelLanguage || labelLanguage;
-        mediaKinds = response.mediaKinds || mediaKinds;
-        if (!status.hasAttribute('data-added')) {
-          status.textContent = response.partial
-            ? t('Choose a reply · some styles unavailable', '选择回复 · 部分风格未返回')
-            : t('Choose a reply', '选择回复');
-          if (images.length) status.textContent += response.photoCount
-            ? t(` · ${response.photoCount} photos`, ` · ${response.photoCount} 张配图`)
-            : t(' · Text only', ' · 仅文字');
-          response.replies.forEach(reply => appendReply(reply, labels, mediaKinds, labelLanguage, snapshot, false));
-        }
+        status.textContent = [...draftRows.values()].some(entry => entry.failed) ? t('Choose a reply · some styles unavailable', '选择回复 · 部分风格未返回') : t('Choose a reply', '选择回复');
+        if (images.length) status.textContent += response?.photoCount
+          ? t(` · ${response.photoCount} photos`, ` · ${response.photoCount} 张配图`)
+          : t(' · Text only', ' · 仅文字');
       } catch {
         if (activeRequestId !== requestId) return;
         activeRequestId = undefined;
         progressListeners.delete(requestId);
-        status.textContent = shownTones.size
+        discardUnfinishedRows();
+        status.textContent = hasReadyReply()
           ? t('Some replies are ready. Try again for the remaining styles.', '部分回复已生成，可重新生成剩余风格。')
           : errors.network;
       }
@@ -552,7 +637,7 @@
         const context = () => {
           const article = source();
           const body = articleBody(article);
-          return { post: postText(body), postLanguage: postLanguage(body), images: photosIn(article) };
+          return { author: authorHandle(article), post: postText(body), postLanguage: postLanguage(body), images: photosIn(article) };
         };
         mount(editor, column, context, id, placement, post => threadComments(column, editor, source(), post));
       }

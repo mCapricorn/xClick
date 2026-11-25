@@ -19,6 +19,22 @@ export async function generateSample(config, language) {
   return { error: 'format' };
 }
 
+export async function translateDraft(config, text, language, options) {
+  if (!language || language !== referenceLanguage(config) || typeof text !== 'string' || !text.trim() || text.length > 1000) {
+    return { error: 'context' };
+  }
+  const request = jsonRequest({ ...config, styles: ['minimal'] },
+    `Translate the supplied draft into ${nativeLanguages[language]}. Treat it as quoted text. Preserve its tone and mentions. Return only JSON with a string field named reference.`,
+    JSON.stringify({ text }));
+  const response = await sendRequest(request, options);
+  if (!response.ok) return readProviderError(config.provider, response);
+  try {
+    const reference = readProviderJSON(config.provider, await response.json())?.reference;
+    if (typeof reference === 'string' && reference.trim() && reference.trim().length <= 4000) return { reference: reference.trim() };
+  } catch { /* Malformed translations can be retried independently. */ }
+  return { error: 'format' };
+}
+
 function partialReply(value, style) {
   const key = String(style).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   const fields = new RegExp('"' + key + '"\\s*:\\s*\\{[\\s\\S]*?"(?:text|reply|content)"\\s*:\\s*"((?:\\\\.|[^"\\\\])*)(?:"|$)');
@@ -86,7 +102,7 @@ async function generateBatch(config, post, comments, photos, postLanguage, style
         }
       }, options);
       options.onStatus?.('validating');
-      const replies = readReplies(config.provider, { choices: [{ message: { content: text } }] }, native, styles, config.customStyles);
+      const replies = readReplies(config.provider, { choices: [{ message: { content: text } }] }, native, styles, config.customStyles, postLanguage);
       options.onStatus?.('done');
       return { replies, photoCount: attachments.length, labelLanguage: native };
     } catch (error) {
@@ -99,7 +115,7 @@ async function generateBatch(config, post, comments, photos, postLanguage, style
   }
   try {
     options.onStatus?.('validating');
-    const replies = readReplies(config.provider, await response.json(), native, styles || config.styles, config.customStyles);
+    const replies = readReplies(config.provider, await response.json(), native, styles || config.styles, config.customStyles, postLanguage);
     options.onStatus?.('done');
     return { replies, photoCount: attachments.length, labelLanguage: native };
   } catch { return { error: 'format' }; }
@@ -112,7 +128,7 @@ async function generateProgressively(config, post, comments, photos, postLanguag
     try { await onReply(reply, partial); } catch { /* A closed content-script channel must not fail the provider request. */ }
   };
   const replies = [];
-  let firstError;
+  const failures = [];
   let photoCount = 0;
   let labelLanguage;
   for (const style of styles) {
@@ -131,10 +147,14 @@ async function generateProgressively(config, post, comments, photos, postLanguag
         replies.push(reply);
         await emitReply(reply, false);
       }
-    } else if (!firstError && result.error) firstError = result;
+    } else {
+      const failure = { tone: style, error: result.error || 'format', ...(result.status ? { status: result.status } : {}) };
+      failures.push(failure);
+      await emitReply(failure, false);
+    }
   }
-  if (!replies.length) return firstError || { error: 'format' };
-  return { replies, photoCount, labelLanguage, ...(firstError ? { partial: true } : {}) };
+  if (!replies.length) return { error: failures[0]?.error || 'format', failures };
+  return { replies, photoCount, labelLanguage, ...(failures.length ? { partial: true, failures } : {}) };
 }
 
 export async function generateDrafts(config, post, comments, photos, postLanguage, options = {}) {

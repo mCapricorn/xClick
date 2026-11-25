@@ -3,11 +3,19 @@ import { createServer } from 'node:http';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import { providers, apiBase, apiPermission, makeRequest, readReplies, readProviderError } from '../ai/providers.mjs';
+import { translateDraft } from '../ai/generation.mjs';
 import { catalogues, fetchModels } from '../ai/models.mjs';
 
 const manifest = JSON.parse(readFileSync(new URL('../manifest.json', import.meta.url)));
 const entries = { minimal: { text: '纸上编程' }, concise: { text: '简洁回复' }, conversational: { text: '自然一点的回复' }, vivid: { text: '更加生动的回复' }, enthusiastic: { text: '等一下，连纸上的缩进都对齐了！最好奇的是下一页会怎么改这个循环。' }, sincereFriendly: { text: '纸上的缩进也排得这么清楚，读起来很舒服。' } };
 const drafts = Object.entries(entries).map(([tone, entry]) => ({ tone, ...entry }));
+function providerEnvelope(provider, text) {
+  return provider === 'google' ? { candidates: [{ content: { parts: [{ thought: true, text: 'hidden' }, { text }] } }] }
+      : provider === 'anthropic' ? { content: [{ type: 'text', text }] }
+      : provider === 'grok' ? { output: [{ type: 'reasoning' }, { type: 'message', role: 'assistant', content: [{ type: 'output_text', text }] }] }
+      : { choices: [{ message: { content: text } }] };
+}
+
 test('each provider has multiple model suggestions', () => {
   for (const [id, entry] of Object.entries(providers)) {
     assert.ok(new Set([entry.model, ...catalogues[id].extra]).size > 1);
@@ -182,11 +190,7 @@ for (const [provider, { model }] of Object.entries(providers)) {
     assert.match(JSON.stringify(body), /测试原帖/);
     assert.match(JSON.stringify(body), /Traditional Chinese/);
     assert.match(JSON.stringify(body), /English for English posts/);
-    const text = JSON.stringify(entries);
-    const data = provider === 'google' ? { candidates: [{ content: { parts: [{ thought: true, text: 'hidden' }, { text }] } }] }
-      : provider === 'anthropic' ? { content: [{ type: 'text', text }] }
-      : provider === 'grok' ? { output: [{ type: 'reasoning' }, { type: 'message', role: 'assistant', content: [{ type: 'output_text', text }] }] }
-      : { choices: [{ message: { content: text } }] };
+    const data = providerEnvelope(provider, JSON.stringify(entries));
     assert.deepEqual(readReplies(provider, data), drafts);
   });
 }
@@ -417,3 +421,13 @@ test('selects media by model and falls back once only for image input errors', a
   assert.equal((await run(ark, [failure(400, 'Image download failed'), success], '🤗')).photoCount, 0);
   assert.deepEqual(JSON.parse(bodies[1].messages[1].content).post, '🤗');
 });
+
+
+for (const provider of Object.keys(providers)) {
+  test(`reads a standalone translation from ${provider}`, async t => {
+    const data = providerEnvelope(provider, JSON.stringify({ reference: '新鲜罗勒。' }));
+    t.mock.method(globalThis, 'fetch', async () => Response.json(data));
+    assert.deepEqual(await translateDraft({ provider, key: 'fixture', model: 'fixture', bilingual: true, nativeLanguage: 'zh-Hans' },
+      'Fresh basil.', 'zh-Hans'), { reference: '新鲜罗勒。' });
+  });
+}
